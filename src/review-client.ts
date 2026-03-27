@@ -1,5 +1,9 @@
-import type { ReviewClientRequest, ReviewClientResult } from "./types.js";
+import type { ReviewClientRequest, ReviewClientResult, ReviewFile } from "./types.js";
+
+export interface ReviewClientOptions {
+  onRerunCommand?: (command: string) => Promise<{ content: string; files: ReviewFile[] }>;
+}
 
 export interface ReviewClient {
-  requestReview(input: ReviewClientRequest): Promise<ReviewClientResult | null>;
+  requestReview(input: ReviewClientRequest, options?: ReviewClientOptions): Promise<ReviewClientResult | null>;
 }

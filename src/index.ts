@@ -176,7 +176,16 @@ export default function (pi: ExtensionAPI) {
         ? ({ title: source.title, mode, content: source.content, files } satisfies DiffReviewClientRequest)
         : ({ title: source.title, mode, content: source.content, files: [] } satisfies TextReviewClientRequest);
 
-    const clientResult = await reviewClient.requestReview(clientRequest);
+    const clientResult = await reviewClient.requestReview(clientRequest, {
+      onRerunCommand: source.kind === "command"
+        ? async (command: string) => {
+            const result = await pi.exec("sh", ["-lc", command], { signal });
+            const content = combineCommandOutput(result.stdout, result.stderr, result.code);
+            const newFiles = isUnifiedDiff(content) ? parseDiff(content) : [];
+            return { content, files: newFiles };
+          }
+        : undefined
+    });
 
     if (clientResult === null) {
       return createResult("request", "User cancelled the review.", { cancelled: true });

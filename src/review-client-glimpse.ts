@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { open, prompt } from "glimpseui";
-import type { ReviewClient } from "./review-client.js";
+import type { ReviewClient, ReviewClientOptions } from "./review-client.js";
 import type { ReviewBridgeInit, ReviewBridgeMessage, ReviewClientRequest, ReviewClientResult } from "./types.js";
 
 const REVIEW_UI_BOOTSTRAP_MARKER = "<!-- PIANNOTATOR_BOOTSTRAP -->";
@@ -29,7 +29,7 @@ export class GlimpseReviewClient implements ReviewClient {
     this.promptImpl = options.promptImpl;
   }
 
-  async requestReview(input: ReviewClientRequest): Promise<ReviewClientResult | null> {
+  async requestReview(input: ReviewClientRequest, options?: ReviewClientOptions): Promise<ReviewClientResult | null> {
     let template: string;
     try {
       template = await this.loadHtml();
@@ -51,9 +51,9 @@ export class GlimpseReviewClient implements ReviewClient {
           ...REVIEW_WINDOW_OPTIONS,
           title: input.title
         })) as ReviewBridgeMessage | null)
-      : await promptWithReloadableFile(input.title, html);
+      : await promptWithReloadableFile(input.title, html, options);
 
-    if (!message || message.type === "cancel") {
+    if (!message || message.type !== "submit") {
       return null;
     }
 
@@ -85,7 +85,7 @@ export function getDefaultReviewUiPath(): string {
   return compiledCandidate;
 }
 
-async function promptWithReloadableFile(title: string, html: string): Promise<ReviewBridgeMessage | null> {
+async function promptWithReloadableFile(title: string, html: string, options?: ReviewClientOptions): Promise<ReviewBridgeMessage | null> {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "piannotator-review-"));
   const htmlPath = path.join(tempDir, "review-ui.html");
 
@@ -158,8 +158,22 @@ async function promptWithReloadableFile(title: string, html: string): Promise<Re
       win.show({ title });
     });
 
-    win.once("message", (data) => {
-      resolveOnce(data as ReviewBridgeMessage);
+    win.on("message", async (data) => {
+      const msg = data as ReviewBridgeMessage;
+      if (msg.type === "rerun" && options?.onRerunCommand) {
+        try {
+          const result = await options.onRerunCommand(msg.command);
+          const payload = JSON.stringify({ type: "update", content: result.content, files: result.files });
+          win.send(`window.__PIANNOTATOR_RECEIVE__(${payload})`);
+        } catch (err) {
+          const payload = JSON.stringify({ type: "rerun-error", error: String(err) });
+          win.send(`window.__PIANNOTATOR_RECEIVE__(${payload})`);
+        }
+        return;
+      }
+      if (msg.type === "submit" || msg.type === "cancel") {
+        resolveOnce(msg);
+      }
     });
 
     win.once("closed", () => {

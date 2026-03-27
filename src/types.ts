@@ -152,7 +152,26 @@ export interface ReviewBridgeCancelMessage {
   type: "cancel";
 }
 
-export type ReviewBridgeMessage = ReviewBridgeSubmitMessage | ReviewBridgeCancelMessage;
+export interface ReviewBridgeRerunMessage {
+  type: "rerun";
+  command: string;
+}
+
+export type ReviewBridgeMessage = ReviewBridgeSubmitMessage | ReviewBridgeCancelMessage | ReviewBridgeRerunMessage;
+
+// Extension -> UI messages
+export interface ReviewBridgeUpdateMessage {
+  type: "update";
+  content: string;
+  files: ReviewFile[];
+}
+
+export interface ReviewBridgeRerunErrorMessage {
+  type: "rerun-error";
+  error: string;
+}
+
+export type ReviewBridgeExtensionMessage = ReviewBridgeUpdateMessage | ReviewBridgeRerunErrorMessage;
 
 export function truncateAnnotationSummary(comment: string, limit = ANNOTATION_SUMMARY_LIMIT): string {
   const normalized = comment.replace(/\s+/g, " ").trim();
