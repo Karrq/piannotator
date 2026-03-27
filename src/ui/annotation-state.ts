@@ -1,4 +1,4 @@
-import { truncateAnnotationSummary, type Annotation, type AnnotationDraft, type DiffAnnotation, type TextAnnotation } from "../types.js";
+import { truncateAnnotationSummary, type Annotation, type AnnotationDraft } from "../types.js";
 
 export function materializeAnnotations(drafts: AnnotationDraft[]): { annotations: Annotation[]; nextAnnotationNumber: number } {
   const annotations = drafts.map((draft, index) => materializeAnnotation(draft, index + 1));
@@ -9,23 +9,11 @@ export function materializeAnnotations(drafts: AnnotationDraft[]): { annotations
 }
 
 export function materializeAnnotation(draft: AnnotationDraft, annotationNumber: number): Annotation {
-  const id = `A${annotationNumber}`;
-
-  if (draft.kind === "diff") {
-    const annotation: DiffAnnotation = {
-      ...draft,
-      id,
-      summary: truncateAnnotationSummary(draft.comment)
-    };
-    return annotation;
-  }
-
-  const annotation: TextAnnotation = {
+  return {
     ...draft,
-    id,
+    id: `A${annotationNumber}`,
     summary: truncateAnnotationSummary(draft.comment)
   };
-  return annotation;
 }
 
 export function annotationsToDrafts(annotations: Annotation[]): AnnotationDraft[] {

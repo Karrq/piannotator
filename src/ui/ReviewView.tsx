@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { DiffModeEnum } from "@git-diff-view/react";
-import type { Annotation, DiffAnnotation, DiffAnnotationDraft, DiffAnnotationLineSource, ReviewFile } from "../types.js";
+import type { Annotation, AnnotationDraft, AnnotationLineSource, ReviewFile } from "../types.js";
 import { DiffPanel } from "./DiffPanel.js";
 import { FileTree } from "./FileTree.js";
 import { buildFileTree, sortFilesForTreeOrder } from "./file-tree-data.js";
@@ -15,7 +15,7 @@ interface ReviewViewProps {
   viewedFiles: Set<string>;
   onToggleViewed: (filePath: string) => void;
   shiftKeyHeld: boolean;
-  addDiffAnnotation: (draft: DiffAnnotationDraft) => void;
+  addAnnotation: (draft: AnnotationDraft) => void;
   updateComment: (annotationId: string, comment: string) => void;
   deleteAnnotation: (annotationId: string) => void;
 }
@@ -24,8 +24,7 @@ interface FileScopedRangeAnchor extends RangeAnchor {
   filePath: string;
 }
 
-export function ReviewView({ files, annotations, diffMode, collapsedFiles, onToggleCollapsed, viewedFiles, onToggleViewed, shiftKeyHeld, addDiffAnnotation, updateComment, deleteAnnotation }: ReviewViewProps) {
-  const diffAnnotations = annotations.filter((annotation): annotation is DiffAnnotation => annotation.kind === "diff");
+export function ReviewView({ files, annotations, diffMode, collapsedFiles, onToggleCollapsed, viewedFiles, onToggleViewed, shiftKeyHeld, addAnnotation, updateComment, deleteAnnotation }: ReviewViewProps) {
   const orderedFiles = useMemo(() => sortFilesForTreeOrder(files), [files]);
   const [activeFilePath, setActiveFilePath] = useState(orderedFiles[0]?.displayPath ?? "");
   const [rangeAnchor, setRangeAnchor] = useState<FileScopedRangeAnchor | null>(null);
@@ -153,16 +152,16 @@ export function ReviewView({ files, annotations, diffMode, collapsedFiles, onTog
   }, [orderedFiles]);
 
   const annotationsByFile = useMemo(() => {
-    const grouped = new Map<string, DiffAnnotation[]>();
-    for (const annotation of diffAnnotations) {
+    const grouped = new Map<string, Annotation[]>();
+    for (const annotation of annotations) {
       const existing = grouped.get(annotation.filePath) ?? [];
       existing.push(annotation);
       grouped.set(annotation.filePath, existing);
     }
     return grouped;
-  }, [diffAnnotations]);
+  }, [annotations]);
 
-  const fileTreeNodes = useMemo(() => buildFileTree(orderedFiles, diffAnnotations), [diffAnnotations, orderedFiles]);
+  const fileTreeNodes = useMemo(() => buildFileTree(orderedFiles, annotations), [annotations, orderedFiles]);
   const showFileTree = orderedFiles.length > 1;
 
   if (!orderedFiles[0]) {
@@ -211,7 +210,7 @@ export function ReviewView({ files, annotations, diffMode, collapsedFiles, onTog
               onRangeAnchorChange={(nextAnchor) => {
                 setRangeAnchor(nextAnchor ? { ...nextAnchor, filePath: file.displayPath } : null);
               }}
-              onAddAnnotation={addDiffAnnotation}
+              onAddAnnotation={addAnnotation}
               onUpdateAnnotation={updateComment}
               onDeleteAnnotation={deleteAnnotation}
             />
@@ -247,6 +246,6 @@ function toLocalAnchor(anchor: FileScopedRangeAnchor | null, filePath: string): 
 
   return {
     lineNumber: anchor.lineNumber,
-    lineSource: anchor.lineSource as DiffAnnotationLineSource
+    lineSource: anchor.lineSource as AnnotationLineSource
   };
 }

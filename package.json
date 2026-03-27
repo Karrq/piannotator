@@ -7,7 +7,7 @@
     "pi-package"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && node ./build/scripts/validate-diff-parser.js && node ./build/scripts/validate-diff-panel.js && node ./build/scripts/validate-range-selection.js && node ./build/scripts/validate-file-tree.js && node ./build/scripts/validate-text-review.js && node ./build/scripts/validate-glimpse-client.js && node ./build/scripts/smoke-annotate.js && node ./build/esbuild.config.js && node ./build/scripts/validate-ui-bundle.js",
+    "build": "tsc -p tsconfig.json && node ./build/scripts/validate-diff-parser.js && node ./build/scripts/validate-diff-panel.js && node ./build/scripts/validate-range-selection.js && node ./build/scripts/validate-file-tree.js && node ./build/scripts/validate-glimpse-client.js && node ./build/scripts/smoke-annotate.js && node ./build/esbuild.config.js && node ./build/scripts/validate-ui-bundle.js",
     "rebuild": "npm rebuild glimpseui && npm run build"
   },
   "pi": {

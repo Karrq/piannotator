@@ -65,55 +65,27 @@ const ctx = {
   }
 };
 
-const textRequest = await annotateTool.execute(
-  "tool-call-1",
-  { action: "request", content: "first line\nsecond line" },
-  undefined,
-  undefined,
-  ctx
-);
-assert.match(textRequest.content[0].text, /Review review-1/);
-assert.equal(textRequest.details.review.id, "review-1");
-assert.equal(textRequest.details.review.mode, "text");
-assert.equal(textRequest.details.review.annotations.length, 1);
-assert.equal(textRequest.details.review.annotations[0].id, "A1");
-assert.equal(textRequest.details.review.annotations[0].kind, "text");
-assert.equal(textRequest.details.review.annotations[0].lineStart, 1);
-
-// Verify request result includes the annotation overview
-assert.match(textRequest.content[0].text, /A1: L1/);
-
-const textDetail = await annotateTool.execute(
-  "tool-call-2",
-  { action: "detail", reviewId: "review-1", annotationId: "A1" },
-  undefined,
-  undefined,
-  ctx
-);
-assert.match(textDetail.content[0].text, /Annotation A1 in L1/);
-assert.match(textDetail.content[0].text, /Comment:/);
-
+// Diff command request
 const diffRequest = await annotateTool.execute(
-  "tool-call-3",
+  "tool-call-1",
   { action: "request", command: "emit-diff" },
   undefined,
   undefined,
   ctx
 );
-assert.match(diffRequest.content[0].text, /Review review-2/);
-assert.equal(diffRequest.details.review.id, "review-2");
-assert.equal(diffRequest.details.review.mode, "diff");
+assert.match(diffRequest.content[0].text, /Review review-1/);
+assert.equal(diffRequest.details.review.id, "review-1");
 assert.equal(diffRequest.details.review.files.length, 1);
 assert.equal(diffRequest.details.review.annotations.length, 1);
-assert.equal(diffRequest.details.review.annotations[0].kind, "diff");
 assert.equal(diffRequest.details.review.annotations[0].filePath, "src/example.ts");
 
 // Verify request result includes diff annotation overview
 assert.match(diffRequest.content[0].text, /src\/example.ts:/);
 
+// Detail lookup
 const diffDetail = await annotateTool.execute(
-  "tool-call-4",
-  { action: "detail", reviewId: "review-2", annotationId: "A1" },
+  "tool-call-2",
+  { action: "detail", reviewId: "review-1", annotationId: "A1" },
   undefined,
   undefined,
   ctx
@@ -121,8 +93,9 @@ const diffDetail = await annotateTool.execute(
 assert.match(diffDetail.content[0].text, /Annotation A1 in src\/example.ts:/);
 assert.match(diffDetail.content[0].text, /Context \(@@ -1,4 \+1,5 @@\):/);
 
+// Stderr-only command
 const stderrRequest = await annotateTool.execute(
-  "tool-call-5",
+  "tool-call-3",
   { action: "request", command: "emit-stderr" },
   undefined,
   undefined,
@@ -130,13 +103,14 @@ const stderrRequest = await annotateTool.execute(
 );
 assert.match(stderrRequest.details.review.source.content, /^\[stderr\]\nonly stderr$/);
 
-const invalidRequest = await annotateTool.execute(
-  "tool-call-6",
-  { action: "request", content: "first line", command: "emit-diff" },
+// Missing command
+const noCommandRequest = await annotateTool.execute(
+  "tool-call-4",
+  { action: "request" },
   undefined,
   undefined,
   ctx
 );
-assert.equal(invalidRequest.details.error, "annotate.request requires exactly one of content or command.");
+assert.equal(noCommandRequest.details.error, "annotate.request requires a command.");
 
 console.log("Annotate stub smoke test passed.");

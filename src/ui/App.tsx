@@ -2,17 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DiffModeEnum } from "@git-diff-view/react";
 import { ReviewBanner } from "./ReviewBanner.js";
 import { ReviewView } from "./ReviewView.js";
-import { TextReview } from "./TextReview.js";
 import { annotationsToDrafts, materializeAnnotation, materializeAnnotations, removeAnnotation, updateAnnotationComment } from "./annotation-state.js";
 import {
   formatAnnotationReference,
   truncateAnnotationSummary,
   type Annotation,
   type AnnotationDraft,
-  type DiffAnnotationDraft,
   type ReviewBridgeExtensionMessage,
-  type ReviewBridgeInit,
-  type TextAnnotationDraft
+  type ReviewBridgeInit
 } from "../types.js";
 
 interface AppProps {
@@ -46,13 +43,8 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
   const isCommandMode = !!init.command;
 
   const subtitle = useMemo(() => {
-    if (init.mode === "diff") {
-      return `${files.length} file${files.length === 1 ? "" : "s"} loaded`;
-    }
-
-    const lineCount = init.content.split(/\r?\n/).length;
-    return `${lineCount} line${lineCount === 1 ? "" : "s"} loaded`;
-  }, [init.content, files.length, init.mode]);
+    return `${files.length} file${files.length === 1 ? "" : "s"} loaded`;
+  }, [files.length]);
 
   const canSubmit = annotations.length > 0 || overallComment.trim().length > 0;
 
@@ -174,7 +166,6 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
         next.delete(filePath);
       } else {
         next.add(filePath);
-        // Auto-collapse when marking as viewed
         setCollapsedFiles((collapsed) => new Set([...collapsed, filePath]));
       }
       return next;
@@ -213,8 +204,7 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
   };
 
   const annotationActions = {
-    addDiffAnnotation: (draft: DiffAnnotationDraft) => addAnnotation(draft),
-    addTextAnnotation: (draft: TextAnnotationDraft) => addAnnotation(draft),
+    addAnnotation: (draft: AnnotationDraft) => addAnnotation(draft),
     updateComment: (annotationId: string, comment: string) => {
       setAnnotations((current) => updateAnnotationComment(current, annotationId, comment));
     },
@@ -237,10 +227,9 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
         title={init.title}
         subtitle={subtitle}
         annotationCount={annotations.length}
-        isDiffMode={init.mode === "diff"}
         diffMode={diffMode}
         onDiffModeChange={setDiffMode}
-        totalFiles={init.mode === "diff" ? files.length : 0}
+        totalFiles={files.length}
         viewedCount={viewedFiles.size}
         isCommandMode={isCommandMode}
         onOpenSettings={() => { setEditingCommand(command); setShowSettings(true); }}
@@ -343,30 +332,19 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
         </div>
       )}
       <main className="review-body">
-        {init.mode === "diff" ? (
-          <ReviewView
-            files={files}
-            annotations={annotations}
-            diffMode={diffMode}
-            collapsedFiles={collapsedFiles}
-            onToggleCollapsed={toggleCollapsed}
-            viewedFiles={viewedFiles}
-            onToggleViewed={toggleViewed}
-            shiftKeyHeld={shiftKeyHeld}
-            addDiffAnnotation={annotationActions.addDiffAnnotation}
-            updateComment={annotationActions.updateComment}
-            deleteAnnotation={annotationActions.deleteAnnotation}
-          />
-        ) : (
-          <TextReview
-            content={init.content}
-            annotations={annotations}
-            shiftKeyHeld={shiftKeyHeld}
-            onAddAnnotation={annotationActions.addTextAnnotation}
-            onUpdateAnnotation={annotationActions.updateComment}
-            onDeleteAnnotation={annotationActions.deleteAnnotation}
-          />
-        )}
+        <ReviewView
+          files={files}
+          annotations={annotations}
+          diffMode={diffMode}
+          collapsedFiles={collapsedFiles}
+          onToggleCollapsed={toggleCollapsed}
+          viewedFiles={viewedFiles}
+          onToggleViewed={toggleViewed}
+          shiftKeyHeld={shiftKeyHeld}
+          addAnnotation={annotationActions.addAnnotation}
+          updateComment={annotationActions.updateComment}
+          deleteAnnotation={annotationActions.deleteAnnotation}
+        />
 
         <section className="review-panel">
           <div className="review-panel__header">
@@ -390,9 +368,7 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
               </div>
             ) : (
               <p className="empty-state">
-                {init.mode === "diff"
-                  ? "Use the inline plus button to add single-line diff comments."
-                  : "Use the line buttons to add single-line or range comments in text mode."}
+                Use the inline plus button to add single-line diff comments.
               </p>
             )}
           </div>

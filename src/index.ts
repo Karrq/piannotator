@@ -9,22 +9,17 @@ import { GlimpseReviewClient } from "./review-client-glimpse.js";
 import { StubReviewClient } from "./review-client-stub.js";
 import {
   formatAnnotationReference,
-  formatTextReference,
-  isDiffAnnotation,
   normalizeRange,
   truncateAnnotationSummary,
   type AnnotateState,
   type AnnotateToolDetails,
   type Annotation,
   type AnnotationDraft,
-  type DiffAnnotation,
-  type DiffReviewClientRequest,
   type Review,
+  type ReviewClientRequest,
   type ReviewFile,
-  type ReviewMode,
   type ReviewSource,
-  type TextAnnotation,
-  type TextReviewClientRequest
+  type ReviewSourceCommand
 } from "./types.js";
 
 const AnnotateParamsSchema = Type.Object(
@@ -32,11 +27,8 @@ const AnnotateParamsSchema = Type.Object(
     action: StringEnum(["request", "detail"] as const, {
       description: "Tool action: request starts a review, detail returns one annotation."
     }),
-    content: Type.Optional(
-      Type.String({ description: "Raw text to review. Use with action=request instead of command." })
-    ),
     command: Type.Optional(
-      Type.String({ description: "Shell command whose output should be reviewed. Use with action=request instead of content." })
+      Type.String({ description: "Shell command whose output should be reviewed. Use with action=request." })
     ),
     title: Type.Optional(Type.String({ description: "Short review title. Use with action=request." })),
     reviewId: Type.Optional(
@@ -51,13 +43,7 @@ const AnnotateParamsSchema = Type.Object(
 
 type AnnotateParams = Static<typeof AnnotateParamsSchema>;
 
-type RequestTextInput = {
-  action: "request";
-  content: string;
-  title?: string;
-};
-
-type RequestCommandInput = {
+type RequestInput = {
   action: "request";
   command: string;
   title?: string;
@@ -111,10 +97,10 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "annotate",
     label: "Annotate",
-    description: "Request user annotations on text or command output, then retrieve annotation details.",
+    description: "Request user annotations on command output, then retrieve annotation details.",
     promptSnippet: "Request user annotations with GitHub-style refs, then retrieve detail without returning full source content.",
     promptGuidelines: [
-      "Use annotate.request to ask the user for annotations on text or command output.",
+      "Use annotate.request to ask the user for annotations on command output.",
       "The request result includes an annotation overview. Use annotate.detail to get full context for a specific annotation.",
       "Prefer command mode when the content should stay out of the model context."
     ],
@@ -154,35 +140,32 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  async function handleRequest(params: RequestTextInput | RequestCommandInput, signal: AbortSignal | undefined) {
+  async function handleRequest(params: RequestInput, signal: AbortSignal | undefined) {
     const source = await loadReviewSource(params, signal);
     const files = isUnifiedDiff(source.content) ? parseDiff(source.content) : [];
-    const mode: ReviewMode = files.length > 0 ? "diff" : "text";
-    const sourceCommand = source.kind === "command" ? source.command : undefined;
-    const clientRequest =
-      mode === "diff"
-        ? ({ title: source.title, mode, content: source.content, files, command: sourceCommand } satisfies DiffReviewClientRequest)
-        : ({ title: source.title, mode, content: source.content, files: [], command: sourceCommand } satisfies TextReviewClientRequest);
+    const clientRequest: ReviewClientRequest = {
+      title: source.title,
+      content: source.content,
+      files,
+      command: source.command
+    };
 
     const clientResult = await reviewClient.requestReview(clientRequest, {
-      onRerunCommand: source.kind === "command"
-        ? async (command: string) => {
-            const result = await pi.exec("sh", ["-lc", command], { signal });
-            const content = combineCommandOutput(result.stdout, result.stderr, result.code);
-            const newFiles = isUnifiedDiff(content) ? parseDiff(content) : [];
-            return { content, files: newFiles };
-          }
-        : undefined
+      onRerunCommand: async (command: string) => {
+        const result = await pi.exec("sh", ["-lc", command], { signal });
+        const content = combineCommandOutput(result.stdout, result.stderr, result.code);
+        const newFiles = isUnifiedDiff(content) ? parseDiff(content) : [];
+        return { content, files: newFiles };
+      }
     });
 
     if (clientResult === null) {
       return createResult("request", "User cancelled the review.", { cancelled: true });
     }
 
-    const review = createReview(source, mode, files, clientResult.annotations, clientResult.overallComment);
+    const review = createReview(source, files, clientResult.annotations, clientResult.overallComment);
 
-    // Store finalCommand only if the user changed the command
-    if (clientResult.command && source.kind === "command" && clientResult.command !== source.command) {
+    if (clientResult.command && clientResult.command !== source.command) {
       review.finalCommand = clientResult.command;
     }
 
@@ -211,39 +194,27 @@ export default function (pi: ExtensionAPI) {
   }
 
   async function loadReviewSource(
-    params: RequestTextInput | RequestCommandInput,
+    params: RequestInput,
     signal: AbortSignal | undefined
-  ): Promise<ReviewSource> {
-    if ("command" in params) {
-      const result = await pi.exec("sh", ["-lc", params.command], { signal });
-      const content = combineCommandOutput(result.stdout, result.stderr, result.code);
-      return {
-        kind: "command",
-        title: params.title ?? params.command,
-        command: params.command,
-        content,
-        exitCode: result.code
-      };
-    }
-
+  ): Promise<ReviewSourceCommand> {
+    const result = await pi.exec("sh", ["-lc", params.command], { signal });
+    const content = combineCommandOutput(result.stdout, result.stderr, result.code);
     return {
-      kind: "text",
-      title: params.title ?? deriveTextTitle(params.content),
-      content: params.content
+      kind: "command",
+      title: params.title ?? params.command,
+      command: params.command,
+      content,
+      exitCode: result.code
     };
   }
 
-  function createReview(source: ReviewSource, mode: ReviewMode, files: ReviewFile[], drafts: AnnotationDraft[], overallComment?: string): Review {
+  function createReview(source: ReviewSource, files: ReviewFile[], drafts: AnnotationDraft[], overallComment?: string): Review {
     const reviewId = `review-${nextReviewId++}`;
-    const annotations =
-      mode === "diff"
-        ? drafts.map((draft, index) => createDiffAnnotation(draft, index, files))
-        : drafts.map((draft, index) => createTextAnnotation(draft, index));
+    const annotations = drafts.map((draft, index) => createAnnotation(draft, index));
 
     return {
       id: reviewId,
       title: source.title,
-      mode,
       source,
       files,
       annotations,
@@ -252,42 +223,10 @@ export default function (pi: ExtensionAPI) {
     };
   }
 
-  function createTextAnnotation(draft: AnnotationDraft, index: number): TextAnnotation {
-    if (draft.kind !== "text") {
-      throw new Error(`Expected text annotation draft, received ${draft.kind}`);
-    }
-
-    const normalized = normalizeRange(draft.lineStart, draft.lineEnd);
+  function createAnnotation(draft: AnnotationDraft, index: number): Annotation {
     return {
-      kind: "text",
+      ...draft,
       id: `A${index + 1}`,
-      lineSource: "text",
-      lineStart: normalized.lineStart,
-      lineEnd: normalized.lineEnd,
-      comment: draft.comment,
-      summary: truncateAnnotationSummary(draft.comment)
-    };
-  }
-
-  function createDiffAnnotation(draft: AnnotationDraft, index: number, files: ReviewFile[]): DiffAnnotation {
-    if (draft.kind !== "diff") {
-      throw new Error(`Expected diff annotation draft, received ${draft.kind}`);
-    }
-
-    const filePath = draft.filePath || files[0]?.displayPath;
-    if (!filePath) {
-      throw new Error("Diff annotations require a file path");
-    }
-
-    const normalized = normalizeRange(draft.lineStart, draft.lineEnd);
-    return {
-      kind: "diff",
-      id: `A${index + 1}`,
-      filePath,
-      lineSource: draft.lineSource,
-      lineStart: normalized.lineStart,
-      lineEnd: normalized.lineEnd,
-      comment: draft.comment,
       summary: truncateAnnotationSummary(draft.comment)
     };
   }
@@ -316,25 +255,14 @@ export default function (pi: ExtensionAPI) {
   }
 }
 
-function parseRequestInput(params: AnnotateParams): RequestTextInput | RequestCommandInput | { error: string } {
-  const hasContent = params.content !== undefined;
-  const hasCommand = params.command !== undefined;
-
-  if (hasContent === hasCommand) {
-    return { error: "annotate.request requires exactly one of content or command." };
-  }
-
-  if (hasCommand) {
-    return {
-      action: "request",
-      command: params.command!,
-      title: params.title
-    };
+function parseRequestInput(params: AnnotateParams): RequestInput | { error: string } {
+  if (params.command === undefined) {
+    return { error: "annotate.request requires a command." };
   }
 
   return {
     action: "request",
-    content: params.content!,
+    command: params.command,
     title: params.title
   };
 }
@@ -374,15 +302,6 @@ function combineCommandOutput(stdout: string, stderr: string, exitCode: number |
   return parts.join("\n\n");
 }
 
-function deriveTextTitle(content: string): string {
-  const firstLine = content.split(/\r?\n/).find((line) => line.trim().length > 0)?.trim();
-  if (!firstLine) {
-    return "text review";
-  }
-
-  return firstLine.length <= 60 ? firstLine : `${firstLine.slice(0, 57).trimEnd()}...`;
-}
-
 function formatRequestResult(review: Review): string {
   const count = review.annotations.length;
   const parts: string[] = [];
@@ -416,7 +335,7 @@ function formatDetail(review: Review, annotation: Annotation): string {
   const reference = formatAnnotationReference(annotation);
   const lines = [`Annotation ${annotation.id} in ${reference}`, ""];
 
-  if (isDiffAnnotation(annotation)) {
+  if (annotation.filePath) {
     const file = review.files.find((item) => item.displayPath === annotation.filePath);
     if (file) {
       const context = extractDiffContext(file, annotation.lineSource, annotation.lineStart, annotation.lineEnd);
@@ -431,9 +350,6 @@ function formatDetail(review: Review, annotation: Annotation): string {
       lines.push("Context:");
       lines.push(`  (No parsed diff file found for ${annotation.filePath}.)`);
     }
-  } else {
-    lines.push(`Context (${formatTextReference(annotation.lineStart, annotation.lineEnd)}):`);
-    lines.push(...formatTextContextLines(review.source.content, annotation.lineStart, annotation.lineEnd));
   }
 
   lines.push("");
@@ -441,24 +357,6 @@ function formatDetail(review: Review, annotation: Annotation): string {
   lines.push(...annotation.comment.split(/\r?\n/).map((line) => `  ${line}`));
 
   return lines.join("\n");
-}
-
-function formatTextContextLines(content: string, lineStart: number, lineEnd?: number, radius = 3): string[] {
-  const rows = content.split(/\r?\n/);
-  const range = normalizeRange(lineStart, lineEnd);
-  const start = Math.max(1, range.lineStart - radius);
-  const end = Math.min(rows.length, (range.lineEnd ?? range.lineStart) + radius);
-  const width = String(end).length;
-  const formatted: string[] = [];
-
-  for (let index = start; index <= end; index += 1) {
-    const annotated = index >= range.lineStart && index <= (range.lineEnd ?? range.lineStart);
-    const prefix = annotated ? ">" : " ";
-    const lineNumber = String(index).padStart(width, " ");
-    formatted.push(`${prefix} ${lineNumber} | ${rows[index - 1] ?? ""}`);
-  }
-
-  return formatted;
 }
 
 function formatDiffContextLines(
@@ -482,14 +380,11 @@ function formatDiffContextLines(
 function renderCall(args: AnnotateParams, theme: Theme) {
   switch (args.action) {
     case "request": {
-      const isCommandRequest = typeof args.command === "string";
-      const target = isCommandRequest ? args.command : previewText(args.content ?? "", 40);
-      const mode = isCommandRequest ? "command" : "text";
       return new Text(
         theme.fg("toolTitle", theme.bold("annotate ")) +
-          theme.fg("muted", `request ${mode}`) +
+          theme.fg("muted", "request") +
           " " +
-          theme.fg("dim", JSON.stringify(target)),
+          theme.fg("dim", JSON.stringify(args.command ?? "")),
         0,
         0
       );
@@ -528,7 +423,7 @@ function renderResult(details: AnnotateToolDetails | undefined, content: Array<{
       }
 
       return new Text(
-        theme.fg("success", "✓ ") +
+        theme.fg("success", "~ ") +
           theme.fg("muted", `${review.id} with ${review.annotations.length} annotation${review.annotations.length === 1 ? "" : "s"}`),
         0,
         0

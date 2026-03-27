@@ -1,8 +1,8 @@
 import { DiffFile } from "@git-diff-view/react";
-import type { ReviewFile, DiffAnnotation } from "../types.js";
+import type { ReviewFile, Annotation } from "../types.js";
 
 export interface DiffThreadData {
-  comments: DiffAnnotation[];
+  comments: Annotation[];
 }
 
 export interface DiffExtendData {
@@ -32,7 +32,7 @@ export function createDiffViewFile(file: ReviewFile): DiffFile {
   return diffFile;
 }
 
-export function buildDiffExtendData(annotations: DiffAnnotation[]): DiffExtendData {
+export function buildDiffExtendData(annotations: Annotation[]): DiffExtendData {
   const extendData: DiffExtendData = {
     oldFile: {},
     newFile: {}

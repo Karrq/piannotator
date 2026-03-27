@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { type DiffModeEnum, DiffView, SplitSide } from "@git-diff-view/react";
 import { ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
 import { highlighter } from "@git-diff-view/lowlight";
-import type { DiffAnnotation, DiffAnnotationDraft, DiffAnnotationLineSource, ReviewFile } from "../types.js";
+import type { Annotation, AnnotationDraft, AnnotationLineSource, ReviewFile } from "../types.js";
 import { buildDiffExtendData, createDiffViewFile } from "./diff-panel-helpers.js";
 import { CommentForm } from "./CommentForm.js";
 import { CommentThread } from "./CommentThread.js";
@@ -11,7 +11,7 @@ import { createSingleLineSelection, formatSelectionLabel, resolveRangeSelection,
 
 interface DiffPanelProps {
   file: ReviewFile;
-  annotations: DiffAnnotation[];
+  annotations: Annotation[];
   diffMode: DiffModeEnum;
   collapsed: boolean;
   onToggleCollapse: () => void;
@@ -20,7 +20,7 @@ interface DiffPanelProps {
   shiftKeyHeld: boolean;
   rangeAnchor: RangeAnchor | null;
   onRangeAnchorChange: (anchor: RangeAnchor | null) => void;
-  onAddAnnotation: (draft: DiffAnnotationDraft) => void;
+  onAddAnnotation: (draft: AnnotationDraft) => void;
   onUpdateAnnotation: (annotationId: string, comment: string) => void;
   onDeleteAnnotation: (annotationId: string) => void;
 }
@@ -102,7 +102,6 @@ export function DiffPanel({
                   }}
                   onSubmit={(comment) => {
                     onAddAnnotation({
-                      kind: "diff",
                       filePath: file.displayPath,
                       lineStart: selection.lineStart,
                       lineEnd: selection.lineEnd,
@@ -135,6 +134,6 @@ function DiffRenderFallback({ file }: { file: ReviewFile }) {
   );
 }
 
-function toLineSource(side: SplitSide): DiffAnnotationLineSource {
+function toLineSource(side: SplitSide): AnnotationLineSource {
   return side === SplitSide.old ? "old" : "new";
 }

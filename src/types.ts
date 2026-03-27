@@ -1,14 +1,7 @@
 export const ANNOTATION_SUMMARY_LIMIT = 50;
 
-export type ReviewMode = "text" | "diff";
-export type DiffAnnotationLineSource = "old" | "new";
+export type AnnotationLineSource = "old" | "new";
 export type ReviewFileChangeType = "modified" | "added" | "deleted" | "renamed";
-
-export interface ReviewSourceText {
-  kind: "text";
-  title: string;
-  content: string;
-}
 
 export interface ReviewSourceCommand {
   kind: "command";
@@ -18,7 +11,7 @@ export interface ReviewSourceCommand {
   exitCode: number | undefined;
 }
 
-export type ReviewSource = ReviewSourceText | ReviewSourceCommand;
+export type ReviewSource = ReviewSourceCommand;
 
 export interface ReviewFileLine {
   kind: "context" | "add" | "del";
@@ -50,32 +43,21 @@ interface AnnotationBase {
   comment: string;
 }
 
-export interface TextAnnotationDraft extends AnnotationBase {
-  kind: "text";
-  lineSource: "text";
-}
-
-export interface DiffAnnotationDraft extends AnnotationBase {
-  kind: "diff";
+export interface AnnotationDraft extends AnnotationBase {
   filePath: string;
-  lineSource: DiffAnnotationLineSource;
+  lineSource: AnnotationLineSource;
 }
-
-export type AnnotationDraft = TextAnnotationDraft | DiffAnnotationDraft;
 
 interface AnnotationMetadata {
   id: string;
   summary: string;
 }
 
-export type TextAnnotation = TextAnnotationDraft & AnnotationMetadata;
-export type DiffAnnotation = DiffAnnotationDraft & AnnotationMetadata;
-export type Annotation = TextAnnotation | DiffAnnotation;
+export type Annotation = AnnotationDraft & AnnotationMetadata;
 
 export interface Review {
   id: string;
   title: string;
-  mode: ReviewMode;
   source: ReviewSource;
   files: ReviewFile[];
   annotations: Annotation[];
@@ -97,33 +79,16 @@ export interface AnnotateToolDetails extends AnnotateState {
   error?: string;
 }
 
-export interface TextContextLine {
-  lineNumber: number;
-  text: string;
-  annotated: boolean;
-}
-
 export interface DiffContextLine extends ReviewFileLine {
   annotated: boolean;
 }
 
-interface ReviewClientRequestBase {
+export interface ReviewClientRequest {
   title: string;
   content: string;
+  files: ReviewFile[];
   command?: string;
 }
-
-export interface TextReviewClientRequest extends ReviewClientRequestBase {
-  mode: "text";
-  files: [];
-}
-
-export interface DiffReviewClientRequest extends ReviewClientRequestBase {
-  mode: "diff";
-  files: ReviewFile[];
-}
-
-export type ReviewClientRequest = TextReviewClientRequest | DiffReviewClientRequest;
 
 export interface ReviewClientResult {
   annotations: AnnotationDraft[];
@@ -133,7 +98,6 @@ export interface ReviewClientResult {
 
 export interface ReviewBridgeInit {
   title: string;
-  mode: ReviewMode;
   content: string;
   files: ReviewFile[];
   annotations: AnnotationDraft[];
@@ -158,7 +122,6 @@ export interface ReviewBridgeRerunMessage {
 
 export type ReviewBridgeMessage = ReviewBridgeSubmitMessage | ReviewBridgeCancelMessage | ReviewBridgeRerunMessage;
 
-// Extension -> UI messages
 export interface ReviewBridgeUpdateMessage {
   type: "update";
   content: string;
@@ -192,36 +155,11 @@ export function normalizeRange(lineStart: number, lineEnd?: number): { lineStart
   };
 }
 
-export function isDiffAnnotation(annotation: Annotation | AnnotationDraft): annotation is DiffAnnotation | DiffAnnotationDraft {
-  return annotation.kind === "diff";
-}
-
-export function isTextAnnotation(annotation: Annotation | AnnotationDraft): annotation is TextAnnotation | TextAnnotationDraft {
-  return annotation.kind === "text";
-}
-
-export function formatTextReference(lineStart: number, lineEnd?: number): string {
-  const normalized = normalizeRange(lineStart, lineEnd);
+export function formatAnnotationReference(annotation: Annotation | AnnotationDraft): string {
+  const normalized = normalizeRange(annotation.lineStart, annotation.lineEnd);
   if (normalized.lineEnd === undefined) {
-    return `L${normalized.lineStart}`;
+    return `${annotation.filePath}:${normalized.lineStart}`;
   }
 
-  return `L${normalized.lineStart}-${normalized.lineEnd}`;
-}
-
-export function formatDiffReference(filePath: string, lineStart: number, lineEnd?: number): string {
-  const normalized = normalizeRange(lineStart, lineEnd);
-  if (normalized.lineEnd === undefined) {
-    return `${filePath}:${normalized.lineStart}`;
-  }
-
-  return `${filePath}:${normalized.lineStart}-${normalized.lineEnd}`;
-}
-
-export function formatAnnotationReference(annotation: Annotation): string {
-  if (isDiffAnnotation(annotation)) {
-    return formatDiffReference(annotation.filePath, annotation.lineStart, annotation.lineEnd);
-  }
-
-  return formatTextReference(annotation.lineStart, annotation.lineEnd);
+  return `${annotation.filePath}:${normalized.lineStart}-${normalized.lineEnd}`;
 }

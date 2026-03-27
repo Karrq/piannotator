@@ -7,6 +7,7 @@ import { open, prompt } from "glimpseui";
 import type { ReviewClient, ReviewClientOptions } from "./review-client.js";
 import type { ReviewBridgeInit, ReviewBridgeMessage, ReviewClientRequest, ReviewClientResult } from "./types.js";
 
+
 const REVIEW_UI_BOOTSTRAP_MARKER = "<!-- PIANNOTATOR_BOOTSTRAP -->";
 const REVIEW_WINDOW_OPTIONS = {
   width: 1200,
@@ -40,7 +41,6 @@ export class GlimpseReviewClient implements ReviewClient {
 
     const html = buildReviewWindowHtml(template, {
       title: input.title,
-      mode: input.mode,
       content: input.content,
       files: input.files,
       annotations: [],

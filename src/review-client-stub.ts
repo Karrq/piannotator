@@ -1,12 +1,9 @@
 import { findFirstChangedLine } from "./diff-parser.js";
 import type { ReviewClient, ReviewClientOptions } from "./review-client.js";
 import type {
-  DiffAnnotationDraft,
-  DiffReviewClientRequest,
+  AnnotationDraft,
   ReviewClientRequest,
-  ReviewClientResult,
-  TextAnnotationDraft,
-  TextReviewClientRequest
+  ReviewClientResult
 } from "./types.js";
 
 const STUB_CANCEL_TOKEN = "[[stub-cancel]]";
@@ -17,37 +14,17 @@ export class StubReviewClient implements ReviewClient {
       return null;
     }
 
-    if (input.mode === "diff") {
-      return this.buildDiffResult(input);
-    }
-
-    return this.buildTextResult(input);
+    return this.buildDiffResult(input);
   }
 
-  private buildTextResult(input: TextReviewClientRequest): ReviewClientResult {
-    const lines = input.content.split(/\r?\n/);
-    const firstContentLine = lines.findIndex((line) => line.trim().length > 0);
-    const lineStart = firstContentLine === -1 ? 1 : firstContentLine + 1;
-
-    const annotation: TextAnnotationDraft = {
-      kind: "text",
-      lineStart,
-      lineSource: "text",
-      comment: `Stub review note for ${input.title} on line ${lineStart}`
-    };
-
-    return { annotations: [annotation] };
-  }
-
-  private buildDiffResult(input: DiffReviewClientRequest): ReviewClientResult {
+  private buildDiffResult(input: ReviewClientRequest): ReviewClientResult {
     for (const file of input.files) {
       const changedLine = findFirstChangedLine(file);
       if (!changedLine) {
         continue;
       }
 
-      const annotation: DiffAnnotationDraft = {
-        kind: "diff",
+      const annotation: AnnotationDraft = {
         filePath: file.displayPath,
         lineStart: changedLine.lineNumber,
         lineSource: changedLine.lineSource,

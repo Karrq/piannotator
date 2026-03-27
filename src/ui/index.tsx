@@ -8,6 +8,7 @@ import type {
   ReviewBridgeMessage
 } from "../types.js";
 
+
 declare global {
   interface Window {
     __PIANNOTATOR_INIT__?: ReviewBridgeInit;
@@ -70,7 +71,6 @@ root.render(
 function createFallbackInit(): ReviewBridgeInit {
   return {
     title: "Piannotator preview",
-    mode: "text",
     content: [
       "This is a local preview payload.",
       "Use it to validate the bundled shell before the full review UI lands.",

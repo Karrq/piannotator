@@ -1,8 +1,8 @@
-import type { DiffAnnotationLineSource, DiffContextLine, ReviewFile, ReviewFileChangeType, ReviewFileHunk, ReviewFileLine } from "./types.js";
+import type { AnnotationLineSource, DiffContextLine, ReviewFile, ReviewFileChangeType, ReviewFileHunk, ReviewFileLine } from "./types.js";
 
 export interface FirstChangedLine {
   lineNumber: number;
-  lineSource: DiffAnnotationLineSource;
+  lineSource: AnnotationLineSource;
 }
 
 export interface DiffContext {
@@ -44,7 +44,7 @@ export function findFirstChangedLine(file: ReviewFile): FirstChangedLine | null 
 
 export function extractDiffContext(
   file: ReviewFile,
-  lineSource: DiffAnnotationLineSource,
+  lineSource: AnnotationLineSource,
   lineStart: number,
   lineEnd = lineStart,
   radius = 3
@@ -305,7 +305,7 @@ function trimTrailingEmptyLines(lines: string[]): string[] {
 
 function matchesLineRange(
   line: ReviewFileLine,
-  lineSource: DiffAnnotationLineSource,
+  lineSource: AnnotationLineSource,
   rangeStart: number,
   rangeEnd: number
 ): boolean {

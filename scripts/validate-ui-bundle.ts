@@ -15,7 +15,6 @@ assert.match(template, /piannotator-root/, "bundle should include the root mount
 
 const hydrated = buildReviewWindowHtml(template, {
   title: "UI bundle validation",
-  mode: "text",
   content: "line one\nline two",
   files: [],
   annotations: []

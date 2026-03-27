@@ -28,8 +28,8 @@ const files: ReviewFile[] = [
 ];
 
 const tree = buildFileTree(files, [
-  { kind: "diff", id: "A1", summary: "", filePath: "src/a.ts", lineSource: "new", lineStart: 3, comment: "note" },
-  { kind: "diff", id: "A2", summary: "", filePath: "src/utils/math.ts", lineSource: "new", lineStart: 5, comment: "note" }
+  { id: "A1", summary: "", filePath: "src/a.ts", lineSource: "new", lineStart: 3, comment: "note" },
+  { id: "A2", summary: "", filePath: "src/utils/math.ts", lineSource: "new", lineStart: 5, comment: "note" }
 ]);
 
 assert.equal(tree.length, 1, "expected one top-level directory");

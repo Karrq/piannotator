@@ -25,15 +25,13 @@ assert.equal(diffViewFile.deletionLength, 1, "diff view file should track deleti
 
 const { annotations } = materializeAnnotations([
   {
-    kind: "diff",
     filePath: "src/example.ts",
     lineStart: 2,
     lineSource: "new",
     comment: "Review this refactor"
   }
 ]);
-const diffAnnotations = annotations.filter((annotation) => annotation.kind === "diff");
-const extendData = buildDiffExtendData(diffAnnotations);
+const extendData = buildDiffExtendData(annotations);
 
 assert.ok(extendData.newFile, "newFile extend data should exist");
 assert.equal(extendData.newFile?.["2"]?.data.comments.length, 1, "line 2 should have one inline thread");

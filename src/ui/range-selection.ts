@@ -1,20 +1,20 @@
-import { normalizeRange, type DiffAnnotationLineSource } from "../types.js";
+import { normalizeRange, type AnnotationLineSource } from "../types.js";
 
 export interface RangeAnchor {
   lineNumber: number;
-  lineSource: DiffAnnotationLineSource;
+  lineSource: AnnotationLineSource;
 }
 
 export interface RangeSelection {
   clickedLineNumber: number;
-  lineSource: DiffAnnotationLineSource;
+  lineSource: AnnotationLineSource;
   lineStart: number;
   lineEnd?: number;
 }
 
 export function createSingleLineSelection(
   clickedLineNumber: number,
-  lineSource: DiffAnnotationLineSource
+  lineSource: AnnotationLineSource
 ): RangeSelection {
   return {
     clickedLineNumber,
@@ -26,7 +26,7 @@ export function createSingleLineSelection(
 export function resolveRangeSelection(
   anchor: RangeAnchor | null,
   clickedLineNumber: number,
-  lineSource: DiffAnnotationLineSource,
+  lineSource: AnnotationLineSource,
   shiftKeyHeld: boolean
 ): { nextAnchor: RangeAnchor; selection: RangeSelection } {
   if (shiftKeyHeld && anchor && anchor.lineSource === lineSource) {

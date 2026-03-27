@@ -1,4 +1,4 @@
-import type { DiffAnnotation, ReviewFile } from "../types.js";
+import type { Annotation, ReviewFile } from "../types.js";
 
 export function sortFilesForTreeOrder(files: ReviewFile[]): ReviewFile[] {
   return [...files].sort((left, right) => compareFilePathsForTreeOrder(left.displayPath, right.displayPath));
@@ -54,7 +54,7 @@ interface DirectoryAccumulator {
   children: Map<string, DirectoryAccumulator | FileTreeNodeData>;
 }
 
-export function buildFileTree(files: ReviewFile[], annotations: DiffAnnotation[]): FileTreeNodeData[] {
+export function buildFileTree(files: ReviewFile[], annotations: Annotation[]): FileTreeNodeData[] {
   const annotationCounts = new Map<string, number>();
   for (const annotation of annotations) {
     annotationCounts.set(annotation.filePath, (annotationCounts.get(annotation.filePath) ?? 0) + 1);

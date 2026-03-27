@@ -12,8 +12,8 @@ const client = new GlimpseReviewClient({
       type: "submit",
       annotations: [
         {
-          kind: "text",
-          lineSource: "text",
+          filePath: "test.txt",
+          lineSource: "new",
           lineStart: 2,
           comment: "Looks good"
         }
@@ -24,14 +24,13 @@ const client = new GlimpseReviewClient({
 
 const result = await client.requestReview({
   title: "sample review",
-  mode: "text",
   content: "line 1\nline 2",
   files: []
 });
 
 assert.ok(result, "expected submit result");
 assert.equal(result?.annotations.length, 1);
-assert.equal(result?.annotations[0].kind, "text");
+assert.equal(result?.annotations[0].filePath, "test.txt");
 
 const cancelledClient = new GlimpseReviewClient({
   loadHtml: async () => htmlTemplate,
@@ -40,7 +39,6 @@ const cancelledClient = new GlimpseReviewClient({
 
 const cancelled = await cancelledClient.requestReview({
   title: "cancel review",
-  mode: "text",
   content: "line 1",
   files: []
 });
@@ -53,7 +51,6 @@ await assert.rejects(
       promptImpl: async () => ({ type: "cancel" })
     }).requestReview({
       title: "broken review",
-      mode: "text",
       content: "line 1",
       files: []
     }),

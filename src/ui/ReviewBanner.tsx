@@ -6,7 +6,6 @@ interface ReviewBannerProps {
   title: string;
   subtitle: string;
   annotationCount: number;
-  isDiffMode: boolean;
   diffMode: DiffModeEnum;
   onDiffModeChange: (mode: DiffModeEnum) => void;
   totalFiles: number;
@@ -22,7 +21,6 @@ export function ReviewBanner({
   title,
   subtitle,
   annotationCount,
-  isDiffMode,
   diffMode,
   onDiffModeChange,
   totalFiles,
@@ -42,25 +40,23 @@ export function ReviewBanner({
         </div>
       </div>
       <div className="review-banner__actions">
-        {isDiffMode && totalFiles > 0 && <ProgressCircle total={totalFiles} viewed={viewedCount} />}
-        {isDiffMode && (
-          <div className="diff-mode-toggle">
-            <button
-              type="button"
-              className={`diff-mode-toggle__btn${diffMode === DiffModeEnum.Unified ? " diff-mode-toggle__btn--active" : ""}`}
-              onClick={() => onDiffModeChange(DiffModeEnum.Unified)}
-            >
-              Unified
-            </button>
-            <button
-              type="button"
-              className={`diff-mode-toggle__btn${diffMode === DiffModeEnum.Split ? " diff-mode-toggle__btn--active" : ""}`}
-              onClick={() => onDiffModeChange(DiffModeEnum.Split)}
-            >
-              Split
-            </button>
-          </div>
-        )}
+        {totalFiles > 0 && <ProgressCircle total={totalFiles} viewed={viewedCount} />}
+        <div className="diff-mode-toggle">
+          <button
+            type="button"
+            className={`diff-mode-toggle__btn${diffMode === DiffModeEnum.Unified ? " diff-mode-toggle__btn--active" : ""}`}
+            onClick={() => onDiffModeChange(DiffModeEnum.Unified)}
+          >
+            Unified
+          </button>
+          <button
+            type="button"
+            className={`diff-mode-toggle__btn${diffMode === DiffModeEnum.Split ? " diff-mode-toggle__btn--active" : ""}`}
+            onClick={() => onDiffModeChange(DiffModeEnum.Split)}
+          >
+            Split
+          </button>
+        </div>
         {isCommandMode && (
           <button type="button" className="review-banner__settings" onClick={onOpenSettings} aria-label="Settings">
             <GearIcon size={16} />
