@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import annotateExtension from "../src/index.js";
 
+process.env.PIANNOTATOR_REVIEW_CLIENT = "stub";
+
 const diffFixture = `diff --git a/src/example.ts b/src/example.ts
 index 1111111..2222222 100644
 --- a/src/example.ts

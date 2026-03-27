@@ -4,6 +4,7 @@ import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { extractDiffContext, isUnifiedDiff, parseDiff } from "./diff-parser.js";
 import type { ReviewClient } from "./review-client.js";
+import { GlimpseReviewClient } from "./review-client-glimpse.js";
 import { StubReviewClient } from "./review-client-stub.js";
 import {
   formatAnnotationReference,
@@ -71,7 +72,7 @@ type DetailInput = Static<typeof DetailParams>;
 export default function (pi: ExtensionAPI) {
   let reviews: Review[] = [];
   let nextReviewId = 1;
-  const reviewClient: ReviewClient = new StubReviewClient();
+  const reviewClient: ReviewClient = createReviewClient();
 
   const reconstructState = (ctx: ExtensionContext) => {
     reviews = [];
@@ -508,4 +509,12 @@ function previewText(value: string, maxLength: number): string {
   }
 
   return `${normalized.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+}
+
+function createReviewClient(): ReviewClient {
+  if (process.env.PIANNOTATOR_REVIEW_CLIENT === "stub") {
+    return new StubReviewClient();
+  }
+
+  return new GlimpseReviewClient();
 }
