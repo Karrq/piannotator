@@ -139,8 +139,6 @@ export function DiffPanel({
                 onGutterUtilityClick: handleGutterClick,
                 enableLineSelection: true,
                 onLineSelected: handleLineSelected,
-                expandUnchanged: true,
-                collapsedContextThreshold: 5,
               }}
               lineAnnotations={lineAnnotations}
               renderAnnotation={(annotation: DiffLineAnnotation<Annotation>) => {

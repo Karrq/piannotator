@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Annotation, AnnotationDraft, ReviewFile } from "../types.js";
 import { DiffPanel } from "./DiffPanel.js";
 import { FileTree } from "./FileTree.js";
@@ -24,6 +24,7 @@ export function ReviewView({ files, annotations, diffMode, diffFont, collapsedFi
   const panelRefs = useRef(new Map<string, HTMLDivElement>());
   const pendingScrollTargetRef = useRef<string | null>(null);
   const pendingScrollTimerRef = useRef<number | null>(null);
+  const scrollAbortRef = useRef(0); // incremented to cancel stale tryScroll loops
 
   const finishPendingScroll = () => {
     const target = pendingScrollTargetRef.current;
@@ -107,21 +108,19 @@ export function ReviewView({ files, annotations, diffMode, diffFont, collapsedFi
   }, []);
 
   useEffect(() => {
-    if (orderedFiles.length <= 1) {
-      return;
-    }
+    if (orderedFiles.length <= 1) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (pendingScrollTargetRef.current !== null) {
-          return;
-        }
+        // Suppress observer during programmatic scrolls to avoid
+        // shifting the render window mid-flight.
+        if (pendingScrollTargetRef.current !== null) return;
 
         const visible = entries
           .filter((entry) => entry.isIntersecting)
           .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
         const filePath = visible?.target.getAttribute("data-file-path");
-        if (filePath) {
+        if (filePath && filePath !== activeFilePath) {
           setActiveFilePath(filePath);
         }
       },
@@ -211,18 +210,158 @@ export function ReviewView({ files, annotations, diffMode, diffFont, collapsedFi
           {!treeCollapsed && <div className="file-tree-resize-handle" onMouseDown={startResize} />}
         </div>
       ) : null}
-      <div className="review-file-list">
-        {orderedFiles.map((file) => (
+      <VirtualizedFileList
+        orderedFiles={orderedFiles}
+        activeFilePath={activeFilePath}
+        scrollTargetPath={pendingScrollTargetRef.current}
+        annotationsByFile={annotationsByFile}
+        diffMode={diffMode}
+        diffFont={diffFont}
+        collapsedFiles={collapsedFiles}
+        onToggleCollapsed={onToggleCollapsed}
+        viewedFiles={viewedFiles}
+        onToggleViewed={onToggleViewed}
+        addAnnotation={addAnnotation}
+        updateComment={updateComment}
+        deleteAnnotation={deleteAnnotation}
+        panelRefs={panelRefs}
+      />
+    </div>
+  );
+
+  function scrollToFile(filePath: string) {
+    pendingScrollTargetRef.current = filePath;
+    const wasAlreadyMounted = (panelRefs.current.get(filePath)?.childElementCount ?? 0) > 0;
+    // Cancel any in-flight scroll polling from a previous click.
+    const scrollId = ++scrollAbortRef.current;
+    setActiveFilePath(filePath);
+
+    let attempts = 0;
+    const tryScroll = () => {
+      if (scrollAbortRef.current !== scrollId) return;
+
+      const element = panelRefs.current.get(filePath);
+      if (element && element.childElementCount > 0) {
+        element.scrollIntoView({
+          behavior: wasAlreadyMounted ? "smooth" : "instant",
+          block: "start",
+        });
+        // For new mounts, do a correction pass after content settles.
+        if (!wasAlreadyMounted) {
+          setTimeout(() => {
+            if (scrollAbortRef.current !== scrollId) return;
+            const el = panelRefs.current.get(filePath);
+            if (el) el.scrollIntoView({ behavior: "instant", block: "start" });
+            // Let schedulePendingScrollFinish handle the finish
+            // after scroll events stop (keeps observer suppressed).
+          }, 150);
+        }
+        // Don't call finishPendingScroll here - let the scroll event
+        // listener's schedulePendingScrollFinish handle it once scrolling
+        // actually stops. This keeps the observer suppressed during
+        // the entire smooth scroll animation.
+        return;
+      }
+      if (++attempts < 20) {
+        requestAnimationFrame(tryScroll);
+      } else {
+        finishPendingScroll();
+      }
+    };
+    requestAnimationFrame(tryScroll);
+  }
+}
+
+function toFileSectionId(filePath: string): string {
+  return `file-${filePath.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
+}
+
+// How many files before/after the active file to keep mounted.
+const RENDER_WINDOW = 2;
+// Minimum placeholder height for files that haven't been measured yet.
+const MIN_PLACEHOLDER_HEIGHT = 80;
+
+interface VirtualizedFileListProps {
+  orderedFiles: ReviewFile[];
+  activeFilePath: string;
+  /** When set, this file is force-included in the render window (for scroll-to). */
+  scrollTargetPath: string | null;
+  annotationsByFile: Map<string, Annotation[]>;
+  diffMode: "unified" | "split";
+  diffFont?: string;
+  collapsedFiles: Set<string>;
+  onToggleCollapsed: (filePath: string) => void;
+  viewedFiles: Set<string>;
+  onToggleViewed: (filePath: string) => void;
+  addAnnotation: (draft: AnnotationDraft) => void;
+  updateComment: (annotationId: string, comment: string) => void;
+  deleteAnnotation: (annotationId: string) => void;
+  panelRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
+}
+
+function VirtualizedFileList({
+  orderedFiles,
+  activeFilePath,
+  scrollTargetPath,
+  annotationsByFile,
+  diffMode,
+  diffFont,
+  collapsedFiles,
+  onToggleCollapsed,
+  viewedFiles,
+  onToggleViewed,
+  addAnnotation,
+  updateComment,
+  deleteAnnotation,
+  panelRefs,
+}: VirtualizedFileListProps) {
+  // Once a file enters the render window, it stays mounted.
+  const mountedRef = useRef(new Set<string>());
+
+  const activeIndex = orderedFiles.findIndex((f) => f.displayPath === activeFilePath);
+  const targetIndex = scrollTargetPath
+    ? orderedFiles.findIndex((f) => f.displayPath === scrollTargetPath)
+    : -1;
+
+  let windowStart = Math.max(0, activeIndex - RENDER_WINDOW);
+  let windowEnd = Math.min(orderedFiles.length - 1, activeIndex + RENDER_WINDOW);
+  if (targetIndex >= 0) {
+    windowStart = Math.min(windowStart, Math.max(0, targetIndex - RENDER_WINDOW));
+    windowEnd = Math.max(windowEnd, Math.min(orderedFiles.length - 1, targetIndex + RENDER_WINDOW));
+  }
+
+  for (let i = windowStart; i <= windowEnd; i++) {
+    mountedRef.current.add(orderedFiles[i].displayPath);
+  }
+
+  return (
+    <div className="review-file-list">
+      {orderedFiles.map((file) => {
+        const shouldMount = mountedRef.current.has(file.displayPath);
+
+        if (!shouldMount) {
+          return (
+            <div
+              key={file.displayPath}
+              id={toFileSectionId(file.displayPath)}
+              data-file-path={file.displayPath}
+              style={{ minHeight: MIN_PLACEHOLDER_HEIGHT }}
+              ref={(element) => {
+                if (element) panelRefs.current.set(file.displayPath, element);
+                else panelRefs.current.delete(file.displayPath);
+              }}
+            />
+          );
+        }
+
+        return (
           <div
             key={file.displayPath}
             id={toFileSectionId(file.displayPath)}
             data-file-path={file.displayPath}
             ref={(element) => {
-              if (element) {
-                panelRefs.current.set(file.displayPath, element);
-              } else {
-                panelRefs.current.delete(file.displayPath);
-              }
+              if (element) panelRefs.current.set(file.displayPath, element);
+              else panelRefs.current.delete(file.displayPath);
             }}
           >
             <DiffPanel
@@ -239,28 +378,10 @@ export function ReviewView({ files, annotations, diffMode, diffFont, collapsedFi
               onDeleteAnnotation={deleteAnnotation}
             />
           </div>
-        ))}
-      </div>
+        );
+      })}
     </div>
   );
-
-  function scrollToFile(filePath: string) {
-    setActiveFilePath(filePath);
-    pendingScrollTargetRef.current = filePath;
-    schedulePendingScrollFinish();
-
-    const element = panelRefs.current.get(filePath);
-    if (!element) {
-      return;
-    }
-
-    const top = Math.max(0, window.scrollY + element.getBoundingClientRect().top - 68);
-    window.scrollTo({ top, behavior: "smooth" });
-  }
-}
-
-function toFileSectionId(filePath: string): string {
-  return `file-${filePath.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
 }
 
 

@@ -435,6 +435,11 @@ button:disabled {
 .review-file-list {
   display: grid;
   gap: 0.9rem;
+  padding-bottom: 60vh;
+}
+
+.review-file-list > [data-file-path] {
+  scroll-margin-top: 72px;
 }
 
 .file-tree-panel {
@@ -500,6 +505,8 @@ button:disabled {
 
 .file-tree-panel__body {
   padding: 0.5rem;
+  overflow-y: auto;
+  max-height: calc(100% - 3rem);
 }
 
 .file-tree-node {

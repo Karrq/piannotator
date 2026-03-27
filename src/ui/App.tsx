@@ -208,6 +208,13 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
         event.preventDefault();
         return;
       }
+
+      // Cmd+R to reload (useful for dev/testing in Glimpse)
+      if (event.metaKey && event.key === "r") {
+        event.preventDefault();
+        location.reload();
+        return;
+      }
     };
 
     window.addEventListener("keydown", onKeyDown);
