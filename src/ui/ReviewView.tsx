@@ -163,6 +163,9 @@ export function ReviewView({ files, annotations, diffMode, collapsedFiles, onTog
 
   const fileTreeNodes = useMemo(() => buildFileTree(orderedFiles, annotations), [annotations, orderedFiles]);
   const showFileTree = orderedFiles.length > 1;
+  const [treeWidth, setTreeWidth] = useState(280);
+  const [treeCollapsed, setTreeCollapsed] = useState(false);
+  const resizingRef = useRef(false);
 
   if (!orderedFiles[0]) {
     return (
@@ -180,9 +183,47 @@ export function ReviewView({ files, annotations, diffMode, collapsedFiles, onTog
     );
   }
 
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    resizingRef.current = true;
+    const startX = e.clientX;
+    const startWidth = treeWidth;
+    const maxWidth = Math.floor(window.innerWidth * 0.5);
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientX - startX;
+      const next = Math.max(120, Math.min(startWidth + delta, maxWidth));
+      setTreeWidth(next);
+    };
+
+    const onMouseUp = () => {
+      resizingRef.current = false;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  };
+
+  const gridStyle = showFileTree
+    ? { gridTemplateColumns: treeCollapsed ? "32px minmax(0, 1fr)" : `${treeWidth}px minmax(0, 1fr)` }
+    : undefined;
+
   return (
-    <div className={showFileTree ? "review-view-layout" : "review-file-list"}>
-      {showFileTree ? <FileTree nodes={fileTreeNodes} activeFilePath={activeFilePath} onSelectFile={scrollToFile} /> : null}
+    <div className={showFileTree ? "review-view-layout" : "review-file-list"} style={gridStyle}>
+      {showFileTree ? (
+        <div className="file-tree-wrapper">
+          <FileTree
+            nodes={fileTreeNodes}
+            activeFilePath={activeFilePath}
+            onSelectFile={scrollToFile}
+            collapsed={treeCollapsed}
+            onToggleCollapse={() => setTreeCollapsed((c) => !c)}
+          />
+          {!treeCollapsed && <div className="file-tree-resize-handle" onMouseDown={startResize} />}
+        </div>
+      ) : null}
       <div className="review-file-list">
         {orderedFiles.map((file) => (
           <div

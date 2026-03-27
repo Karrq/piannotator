@@ -1,4 +1,4 @@
-import { ChevronDownIcon, ChevronRightIcon, FileDirectoryFillIcon, FileIcon } from "@primer/octicons-react";
+import { ChevronDownIcon, ChevronRightIcon, FileDirectoryFillIcon, FileIcon, SidebarCollapseIcon, SidebarExpandIcon } from "@primer/octicons-react";
 import { useEffect, useState } from "react";
 import { Tree, type NodeRendererProps } from "react-arborist";
 import type { FileTreeNodeData } from "./file-tree-data.js";
@@ -7,9 +7,11 @@ interface FileTreeProps {
   nodes: FileTreeNodeData[];
   activeFilePath: string;
   onSelectFile: (filePath: string) => void;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
-export function FileTree({ nodes, activeFilePath, onSelectFile }: FileTreeProps) {
+export function FileTree({ nodes, activeFilePath, onSelectFile, collapsed, onToggleCollapse }: FileTreeProps) {
   const [height, setHeight] = useState(() => getTreeHeight());
 
   useEffect(() => {
@@ -18,11 +20,38 @@ export function FileTree({ nodes, activeFilePath, onSelectFile }: FileTreeProps)
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  if (collapsed) {
+    return (
+      <aside className="file-tree-panel file-tree-panel--collapsed">
+        <button
+          type="button"
+          className="file-tree-panel__collapse-btn"
+          onClick={onToggleCollapse}
+          aria-label="Expand file tree"
+        >
+          <SidebarExpandIcon size={16} />
+        </button>
+      </aside>
+    );
+  }
+
   return (
     <aside className="file-tree-panel">
       <div className="file-tree-panel__header">
-        <div className="review-panel__title">Files</div>
-        <div className="review-panel__meta">{nodes.length} top-level items</div>
+        <div>
+          <div className="review-panel__title">Files</div>
+          <div className="review-panel__meta">{nodes.length} top-level items</div>
+        </div>
+        {onToggleCollapse && (
+          <button
+            type="button"
+            className="file-tree-panel__collapse-btn"
+            onClick={onToggleCollapse}
+            aria-label="Collapse file tree"
+          >
+            <SidebarCollapseIcon size={16} />
+          </button>
+        )}
       </div>
       <div className="file-tree-panel__body">
         <Tree<FileTreeNodeData>
