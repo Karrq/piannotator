@@ -16,10 +16,12 @@ import {
   type Annotation,
   type AnnotationDraft,
   type Review,
+  type ReviewBridgeVersion,
   type ReviewClientRequest,
   type ReviewFile,
   type ReviewSource,
-  type ReviewSourceCommand
+  type ReviewSourceCommand,
+  type ReviewVersion
 } from "./types.js";
 
 const AnnotateParamsSchema = Type.Object(
@@ -245,12 +247,7 @@ export default function (pi: ExtensionAPI) {
       return { cancelled: true };
     }
 
-    const review = createReview(source, files, clientResult.annotations, clientResult.overallComment);
-
-    if (clientResult.command && clientResult.command !== source.command) {
-      review.finalCommand = clientResult.command;
-    }
-
+    const review = createReview(source, files, clientResult.versions, clientResult.overallComment);
     reviews.push(review);
     return { review, cancelled: false };
   }
@@ -306,26 +303,48 @@ export default function (pi: ExtensionAPI) {
     };
   }
 
-  function createReview(source: ReviewSource, files: ReviewFile[], drafts: AnnotationDraft[], overallComment?: string): Review {
+  function createReview(
+    source: ReviewSource,
+    initialFiles: ReviewFile[],
+    versions: ReviewBridgeVersion[],
+    overallComment?: string
+  ): Review {
     const reviewId = `review-${nextReviewId++}`;
-    const annotations = drafts.map((draft, index) => createAnnotation(draft, index));
+
+    // Flatten all annotations across versions, tagging each with versionIndex
+    const allDrafts: AnnotationDraft[] = [];
+    const reviewVersions: ReviewVersion[] = [];
+
+    for (let vi = 0; vi < versions.length; vi++) {
+      const version = versions[vi];
+      reviewVersions.push({ command: version.command, files: vi === 0 ? initialFiles : [] });
+      for (const draft of version.annotations) {
+        allDrafts.push({ ...draft, versionIndex: versions.length > 1 ? vi : undefined });
+      }
+    }
+
+    const annotations = allDrafts.map((draft, index) => ({
+      ...draft,
+      id: `A${index + 1}`,
+      summary: truncateAnnotationSummary(draft.comment)
+    }));
+
+    // Detect if the command was changed (single version, different from source)
+    let finalCommand: string | undefined;
+    if (versions.length === 1 && source.kind === "command" && versions[0].command && versions[0].command !== source.command) {
+      finalCommand = versions[0].command;
+    }
 
     return {
       id: reviewId,
       title: source.title,
       source,
-      files,
+      files: initialFiles,
       annotations,
+      versions: versions.length > 1 ? reviewVersions : undefined,
       overallComment,
+      finalCommand,
       createdAt: new Date().toISOString()
-    };
-  }
-
-  function createAnnotation(draft: AnnotationDraft, index: number): Annotation {
-    return {
-      ...draft,
-      id: `A${index + 1}`,
-      summary: truncateAnnotationSummary(draft.comment)
     };
   }
 
@@ -420,27 +439,45 @@ function combineCommandOutput(stdout: string, stderr: string, exitCode: number |
 function formatRequestResult(review: Review): string {
   const count = review.annotations.length;
   const parts: string[] = [];
-  parts.push(`Review ${review.id} (${count} annotation${count === 1 ? "" : "s"}):`);
 
-  if (review.finalCommand) {
-    parts.push("");
-    parts.push("Note: The review command was changed by the user.");
-    parts.push(`Final command: ${review.finalCommand}`);
+  if (review.versions && review.versions.length > 1) {
+    parts.push(`Review ${review.id} (${review.versions.length} versions, ${count} annotation${count === 1 ? "" : "s"}):`);
+
+    for (let vi = 0; vi < review.versions.length; vi++) {
+      const version = review.versions[vi];
+      const versionAnnotations = review.annotations.filter((a) => a.versionIndex === vi);
+      parts.push("");
+      parts.push(`Version ${vi + 1}${version.command ? ` (${version.command})` : ""}:`);
+      if (versionAnnotations.length === 0) {
+        parts.push("- No annotations");
+      } else {
+        for (const annotation of versionAnnotations) {
+          parts.push(`- ${annotation.id}: ${formatAnnotationReference(annotation)} - \"${annotation.summary}\"`);
+        }
+      }
+    }
+  } else {
+    parts.push(`Review ${review.id} (${count} annotation${count === 1 ? "" : "s"}):`);
+
+    if (review.finalCommand) {
+      parts.push("");
+      parts.push("Note: The review command was changed by the user.");
+      parts.push(`Final command: ${review.finalCommand}`);
+    }
+
+    if (count === 0 && !review.overallComment) {
+      parts.push("- No annotations submitted.");
+    } else {
+      for (const annotation of review.annotations) {
+        parts.push(`- ${annotation.id}: ${formatAnnotationReference(annotation)} - \"${annotation.summary}\"`);
+      }
+    }
   }
 
   if (review.overallComment) {
     parts.push("");
     parts.push("Overall comment:");
     parts.push(review.overallComment);
-    parts.push("");
-  }
-
-  if (count === 0 && !review.overallComment) {
-    parts.push("- No annotations submitted.");
-  } else {
-    for (const annotation of review.annotations) {
-      parts.push(`- ${annotation.id}: ${formatAnnotationReference(annotation)} - \"${annotation.summary}\"`);
-    }
   }
 
   return parts.join("\n");
@@ -451,7 +488,11 @@ function formatDetail(review: Review, annotation: Annotation): string {
   const lines = [`Annotation ${annotation.id} in ${reference}`, ""];
 
   if (annotation.filePath) {
-    const file = review.files.find((item) => item.displayPath === annotation.filePath);
+    // Use version-specific files if available, else fall back to review.files
+    const versionFiles = annotation.versionIndex !== undefined && review.versions?.[annotation.versionIndex]?.files.length
+      ? review.versions[annotation.versionIndex].files
+      : review.files;
+    const file = versionFiles.find((item) => item.displayPath === annotation.filePath);
     if (file) {
       const context = extractDiffContext(file, annotation.lineSource, annotation.lineStart, annotation.lineEnd);
       if (context) {

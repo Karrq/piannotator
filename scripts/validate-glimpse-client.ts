@@ -10,12 +10,16 @@ const client = new GlimpseReviewClient({
     assert.match(html, /sample review/, "expected serialized title in prompt HTML");
     return {
       type: "submit",
-      annotations: [
+      versions: [
         {
-          filePath: "test.txt",
-          lineSource: "new",
-          lineStart: 2,
-          comment: "Looks good"
+          annotations: [
+            {
+              filePath: "test.txt",
+              lineSource: "new",
+              lineStart: 2,
+              comment: "Looks good"
+            }
+          ]
         }
       ]
     };
@@ -29,8 +33,9 @@ const result = await client.requestReview({
 });
 
 assert.ok(result, "expected submit result");
-assert.equal(result?.annotations.length, 1);
-assert.equal(result?.annotations[0].filePath, "test.txt");
+assert.equal(result?.versions.length, 1);
+assert.equal(result?.versions[0].annotations.length, 1);
+assert.equal(result?.versions[0].annotations[0].filePath, "test.txt");
 
 const cancelledClient = new GlimpseReviewClient({
   loadHtml: async () => htmlTemplate,

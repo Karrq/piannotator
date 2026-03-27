@@ -445,8 +445,58 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 1rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid #30363d;
+}
+
+.file-tree-panel__header-content {
+  min-width: 0;
+  flex: 1;
+}
+
+.file-tree-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.file-tree-tabs__nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #8b949e;
+  cursor: pointer;
+}
+
+.file-tree-tabs__nav:hover:not(:disabled) {
+  background: #21262d;
+  color: #e6edf3;
+}
+
+.file-tree-tabs__nav:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.file-tree-tabs__label {
+  min-width: 0;
+  flex: 1;
+  text-align: center;
+}
+
+.file-tree-tabs__command {
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .file-tree-panel__body {

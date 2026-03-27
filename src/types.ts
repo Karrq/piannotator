@@ -46,6 +46,7 @@ interface AnnotationBase {
 export interface AnnotationDraft extends AnnotationBase {
   filePath: string;
   lineSource: AnnotationLineSource;
+  versionIndex?: number;
 }
 
 interface AnnotationMetadata {
@@ -55,12 +56,18 @@ interface AnnotationMetadata {
 
 export type Annotation = AnnotationDraft & AnnotationMetadata;
 
+export interface ReviewVersion {
+  command?: string;
+  files: ReviewFile[];
+}
+
 export interface Review {
   id: string;
   title: string;
   source: ReviewSource;
   files: ReviewFile[];
   annotations: Annotation[];
+  versions?: ReviewVersion[];
   overallComment?: string;
   finalCommand?: string;
   createdAt: string;
@@ -91,9 +98,8 @@ export interface ReviewClientRequest {
 }
 
 export interface ReviewClientResult {
-  annotations: AnnotationDraft[];
+  versions: ReviewBridgeVersion[];
   overallComment?: string;
-  command?: string;
 }
 
 export interface ReviewBridgeInit {
@@ -104,11 +110,15 @@ export interface ReviewBridgeInit {
   command?: string;
 }
 
+export interface ReviewBridgeVersion {
+  command?: string;
+  annotations: AnnotationDraft[];
+}
+
 export interface ReviewBridgeSubmitMessage {
   type: "submit";
-  annotations: AnnotationDraft[];
+  versions: ReviewBridgeVersion[];
   overallComment?: string;
-  command?: string;
 }
 
 export interface ReviewBridgeCancelMessage {

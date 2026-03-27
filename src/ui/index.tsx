@@ -42,8 +42,8 @@ window.__PIANNOTATOR_RECEIVE__ = (message: ReviewBridgeExtensionMessage) => {
 root.render(
   React.createElement(App, {
     init,
-    onSubmit: (annotations, overallComment, command) => {
-      window.glimpse?.send({ type: "submit", annotations, overallComment, command });
+    onSubmit: (versions, overallComment) => {
+      window.glimpse?.send({ type: "submit", versions, overallComment });
     },
     onCancel: () => {
       if (window.glimpse?.send) {

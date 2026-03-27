@@ -1,7 +1,13 @@
-import { ChevronDownIcon, ChevronRightIcon, FileDirectoryFillIcon, FileIcon, SidebarCollapseIcon, SidebarExpandIcon } from "@primer/octicons-react";
+import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, FileDirectoryFillIcon, FileIcon, SidebarCollapseIcon, SidebarExpandIcon } from "@primer/octicons-react";
 import { useEffect, useState } from "react";
 import { Tree, type NodeRendererProps } from "react-arborist";
 import type { FileTreeNodeData } from "./file-tree-data.js";
+
+interface TabInfo {
+  id: string;
+  command: string;
+  annotationCount: number;
+}
 
 interface FileTreeProps {
   nodes: FileTreeNodeData[];
@@ -9,9 +15,13 @@ interface FileTreeProps {
   onSelectFile: (filePath: string) => void;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  tabs?: TabInfo[];
+  activeTabIndex?: number;
+  onTabChange?: (index: number) => void;
 }
 
-export function FileTree({ nodes, activeFilePath, onSelectFile, collapsed, onToggleCollapse }: FileTreeProps) {
+export function FileTree({ nodes, activeFilePath, onSelectFile, collapsed, onToggleCollapse, tabs, activeTabIndex, onTabChange }: FileTreeProps) {
+  const showTabs = tabs && tabs.length > 1 && onTabChange && activeTabIndex !== undefined;
   const [height, setHeight] = useState(() => getTreeHeight());
 
   useEffect(() => {
@@ -38,9 +48,42 @@ export function FileTree({ nodes, activeFilePath, onSelectFile, collapsed, onTog
   return (
     <aside className="file-tree-panel">
       <div className="file-tree-panel__header">
-        <div>
-          <div className="review-panel__title">Files</div>
-          <div className="review-panel__meta">{nodes.length} top-level items</div>
+        <div className="file-tree-panel__header-content">
+          {showTabs ? (
+            <div className="file-tree-tabs">
+              <button
+                type="button"
+                className="file-tree-tabs__nav"
+                onClick={() => onTabChange(activeTabIndex - 1)}
+                disabled={activeTabIndex === 0}
+                aria-label="Previous tab"
+              >
+                <ChevronLeftIcon size={16} />
+              </button>
+              <div className="file-tree-tabs__label">
+                <div className="file-tree-tabs__command" title={tabs[activeTabIndex].command || `Tab ${activeTabIndex + 1}`}>
+                  {tabs[activeTabIndex].command || `Tab ${activeTabIndex + 1}`}
+                </div>
+                <div className="review-panel__meta">
+                  {activeTabIndex + 1}/{tabs.length} · {nodes.length} files
+                </div>
+              </div>
+              <button
+                type="button"
+                className="file-tree-tabs__nav"
+                onClick={() => onTabChange(activeTabIndex + 1)}
+                disabled={activeTabIndex === tabs.length - 1}
+                aria-label="Next tab"
+              >
+                <ChevronRightIcon size={16} />
+              </button>
+            </div>
+          ) : (
+            <div>
+              <div className="review-panel__title">Files</div>
+              <div className="review-panel__meta">{nodes.length} top-level items</div>
+            </div>
+          )}
         </div>
         {onToggleCollapse && (
           <button

@@ -18,22 +18,25 @@ export class StubReviewClient implements ReviewClient {
   }
 
   private buildDiffResult(input: ReviewClientRequest): ReviewClientResult {
+    const annotations: AnnotationDraft[] = [];
+
     for (const file of input.files) {
       const changedLine = findFirstChangedLine(file);
       if (!changedLine) {
         continue;
       }
 
-      const annotation: AnnotationDraft = {
+      annotations.push({
         filePath: file.displayPath,
         lineStart: changedLine.lineNumber,
         lineSource: changedLine.lineSource,
         comment: `Stub review note for ${file.displayPath}:${changedLine.lineNumber}`
-      };
-
-      return { annotations: [annotation] };
+      });
+      break;
     }
 
-    return { annotations: [] };
+    return {
+      versions: [{ command: input.command, annotations }]
+    };
   }
 }

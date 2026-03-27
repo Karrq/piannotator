@@ -2,61 +2,103 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DiffModeEnum } from "@git-diff-view/react";
 import { ReviewBanner } from "./ReviewBanner.js";
 import { ReviewView } from "./ReviewView.js";
-import { annotationsToDrafts, materializeAnnotation, materializeAnnotations, removeAnnotation, updateAnnotationComment } from "./annotation-state.js";
+import { annotationsToDrafts, materializeAnnotation, removeAnnotation, updateAnnotationComment } from "./annotation-state.js";
 import {
   formatAnnotationReference,
   truncateAnnotationSummary,
   type Annotation,
   type AnnotationDraft,
   type ReviewBridgeExtensionMessage,
-  type ReviewBridgeInit
+  type ReviewBridgeInit,
+  type ReviewBridgeVersion,
+  type ReviewFile
 } from "../types.js";
 
 interface AppProps {
   init: ReviewBridgeInit;
-  onSubmit: (annotations: AnnotationDraft[], overallComment?: string, command?: string) => void;
+  onSubmit: (versions: ReviewBridgeVersion[], overallComment?: string) => void;
   onCancel: () => void;
   onRerunCommand?: (command: string) => void;
   onExtensionMessage?: (listener: (msg: ReviewBridgeExtensionMessage) => void) => () => void;
 }
 
+interface ReviewTab {
+  id: string;
+  command: string;
+  content: string;
+  files: ReviewFile[];
+  annotations: Annotation[];
+  nextAnnotationNumber: number;
+  viewedFiles: Set<string>;
+  collapsedFiles: Set<string>;
+}
+
 type PendingFinalAction = "submit" | "cancel" | null;
 
 export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessage }: AppProps) {
-  const initialState = useMemo(() => materializeAnnotations(init.annotations), [init.annotations]);
-  const [annotations, setAnnotations] = useState<Annotation[]>(initialState.annotations);
-  const [nextAnnotationNumber, setNextAnnotationNumber] = useState(initialState.nextAnnotationNumber);
+  const [tabs, setTabs] = useState<ReviewTab[]>([]);
+  const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [shiftKeyHeld, setShiftKeyHeld] = useState(false);
   const [pendingFinalAction, setPendingFinalAction] = useState<PendingFinalAction>(null);
   const [diffMode, setDiffMode] = useState(DiffModeEnum.Unified);
-  const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
-  const [viewedFiles, setViewedFiles] = useState<Set<string>>(new Set());
   const [overallComment, setOverallComment] = useState("");
   const [showSettings, setShowSettings] = useState(false);
-  const [command, setCommand] = useState(init.command ?? "");
   const [editingCommand, setEditingCommand] = useState(init.command ?? "");
   const editingCommandRef = useRef(editingCommand);
   editingCommandRef.current = editingCommand;
   const [commandError, setCommandError] = useState<string | null>(null);
   const [commandRunning, setCommandRunning] = useState(false);
-  const [files, setFiles] = useState(init.files);
+  const [pendingRerun, setPendingRerun] = useState(false);
   const isCommandMode = !!init.command;
 
+  // Create initial tab on mount
+  useEffect(() => {
+    addTab(init.command ?? "", init.content, init.files);
+  }, []);
+
+  const activeTab = tabs[activeTabIndex];
+
+  const totalAnnotations = useMemo(() => tabs.reduce((sum, tab) => sum + tab.annotations.length, 0), [tabs]);
+
   const subtitle = useMemo(() => {
-    return `${files.length} file${files.length === 1 ? "" : "s"} loaded`;
-  }, [files.length]);
+    if (!activeTab) return "";
+    return `${activeTab.files.length} file${activeTab.files.length === 1 ? "" : "s"} loaded`;
+  }, [activeTab?.files.length]);
 
-  const canSubmit = annotations.length > 0 || overallComment.trim().length > 0;
+  const canSubmit = totalAnnotations > 0 || overallComment.trim().length > 0;
 
-  const dismissConfirmation = () => {
-    setPendingFinalAction(null);
-  };
+  function addTab(command: string, content: string, files: ReviewFile[]) {
+    const newTab: ReviewTab = {
+      id: `tab-${Date.now()}`,
+      command,
+      content,
+      files,
+      annotations: [],
+      nextAnnotationNumber: 1,
+      viewedFiles: new Set(),
+      collapsedFiles: new Set()
+    };
+    setTabs((prev) => {
+      const next = [...prev, newTab];
+      setActiveTabIndex(next.length - 1);
+      return next;
+    });
+  }
+
+  function updateActiveTab(updater: (tab: ReviewTab) => ReviewTab) {
+    setTabs((prev) => prev.map((tab, i) => (i === activeTabIndex ? updater(tab) : tab)));
+  }
+
+  const dismissConfirmation = () => setPendingFinalAction(null);
 
   const submitReview = () => {
     dismissConfirmation();
     const comment = overallComment.trim() || undefined;
-    const finalCommand = isCommandMode && command !== init.command ? command : undefined;
-    onSubmit(annotationsToDrafts(annotations), comment, finalCommand);
+    const versions: ReviewBridgeVersion[] = tabs.map((tab) => ({
+      command: tab.command || undefined,
+      annotations: annotationsToDrafts(tab.annotations)
+    }));
+    onSubmit(versions, comment);
   };
 
   const cancelReview = () => {
@@ -64,30 +106,15 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
     onCancel();
   };
 
-  const openSubmitConfirmation = () => {
-    setPendingFinalAction("submit");
-  };
-
-  const openCancelConfirmation = () => {
-    setPendingFinalAction("cancel");
-  };
-
-  useEffect(() => {
-    setAnnotations(initialState.annotations);
-    setNextAnnotationNumber(initialState.nextAnnotationNumber);
-  }, [initialState]);
+  const openSubmitConfirmation = () => setPendingFinalAction("submit");
+  const openCancelConfirmation = () => setPendingFinalAction("cancel");
 
   // Listen for extension-to-UI messages (update/rerun-error)
   useEffect(() => {
     if (!onExtensionMessage) return;
     return onExtensionMessage((msg) => {
       if (msg.type === "update") {
-        setFiles(msg.files);
-        setAnnotations([]);
-        setNextAnnotationNumber(1);
-        setViewedFiles(new Set());
-        setCollapsedFiles(new Set());
-        setCommand(editingCommandRef.current);
+        addTab(editingCommandRef.current, msg.content, msg.files);
         setCommandRunning(false);
         setCommandError(null);
       } else if (msg.type === "rerun-error") {
@@ -148,43 +175,46 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
 
   const addAnnotation = (draft: AnnotationDraft) => {
     dismissConfirmation();
-    setNextAnnotationNumber((current) => {
-      setAnnotations((existing) => [...existing, materializeAnnotation(draft, current)]);
-      return current + 1;
+    updateActiveTab((tab) => {
+      const annotation = materializeAnnotation(draft, tab.nextAnnotationNumber);
+      return {
+        ...tab,
+        annotations: [...tab.annotations, annotation],
+        nextAnnotationNumber: tab.nextAnnotationNumber + 1
+      };
     });
   };
 
   const clearAnnotations = () => {
     dismissConfirmation();
-    setAnnotations([]);
+    updateActiveTab((tab) => ({ ...tab, annotations: [] }));
   };
 
   const toggleViewed = (filePath: string) => {
-    setViewedFiles((prev) => {
-      const next = new Set(prev);
+    updateActiveTab((tab) => {
+      const next = new Set(tab.viewedFiles);
+      const nextCollapsed = new Set(tab.collapsedFiles);
       if (next.has(filePath)) {
         next.delete(filePath);
       } else {
         next.add(filePath);
-        setCollapsedFiles((collapsed) => new Set([...collapsed, filePath]));
+        nextCollapsed.add(filePath);
       }
-      return next;
+      return { ...tab, viewedFiles: next, collapsedFiles: nextCollapsed };
     });
   };
 
   const toggleCollapsed = (filePath: string) => {
-    setCollapsedFiles((prev) => {
-      const next = new Set(prev);
+    updateActiveTab((tab) => {
+      const next = new Set(tab.collapsedFiles);
       if (next.has(filePath)) {
         next.delete(filePath);
       } else {
         next.add(filePath);
       }
-      return next;
+      return { ...tab, collapsedFiles: next };
     });
   };
-
-  const [pendingRerun, setPendingRerun] = useState(false);
 
   const executeRerun = () => {
     if (!onRerunCommand || commandRunning) return;
@@ -196,21 +226,8 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
 
   const handleRunCommand = () => {
     if (!onRerunCommand || commandRunning) return;
-    if (annotations.length > 0) {
-      setPendingRerun(true);
-    } else {
-      executeRerun();
-    }
-  };
-
-  const annotationActions = {
-    addAnnotation: (draft: AnnotationDraft) => addAnnotation(draft),
-    updateComment: (annotationId: string, comment: string) => {
-      setAnnotations((current) => updateAnnotationComment(current, annotationId, comment));
-    },
-    deleteAnnotation: (annotationId: string) => {
-      setAnnotations((current) => removeAnnotation(current, annotationId));
-    }
+    // No confirmation needed since tabs preserve existing annotations
+    executeRerun();
   };
 
   const modalTitle = pendingFinalAction === "submit" ? "Submit review?" : "Discard review?";
@@ -221,18 +238,22 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
       ? "review-modal__confirm"
       : "review-modal__confirm review-modal__confirm--danger";
 
+  if (!activeTab) {
+    return <div className="piannotator-shell" />;
+  }
+
   return (
     <div className="piannotator-shell">
       <ReviewBanner
         title={init.title}
         subtitle={subtitle}
-        annotationCount={annotations.length}
+        annotationCount={totalAnnotations}
         diffMode={diffMode}
         onDiffModeChange={setDiffMode}
-        totalFiles={files.length}
-        viewedCount={viewedFiles.size}
+        totalFiles={activeTab.files.length}
+        viewedCount={activeTab.viewedFiles.size}
         isCommandMode={isCommandMode}
-        onOpenSettings={() => { setEditingCommand(command); setShowSettings(true); }}
+        onOpenSettings={() => { setEditingCommand(activeTab.command); setShowSettings(true); }}
         onSubmit={openSubmitConfirmation}
         onCancel={openCancelConfirmation}
         onClear={clearAnnotations}
@@ -295,55 +316,48 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
             {commandError && (
               <div className="settings-modal__error">{commandError}</div>
             )}
-            {pendingRerun && (
-              <div className="settings-modal__warning">
-                Changing the command will reset all {annotations.length} annotation{annotations.length === 1 ? "" : "s"}. Continue?
-              </div>
-            )}
             <div className="review-modal__actions">
               <button type="button" onClick={() => { setShowSettings(false); setCommandError(null); setPendingRerun(false); }}>
                 Close
               </button>
-              {pendingRerun ? (
-                <>
-                  <button type="button" onClick={() => setPendingRerun(false)}>
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="review-modal__confirm review-modal__confirm--danger"
-                    onClick={executeRerun}
-                  >
-                    Reset and run
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  className="review-modal__confirm"
-                  onClick={handleRunCommand}
-                  disabled={commandRunning || !editingCommand.trim()}
-                >
-                  {commandRunning ? "Running..." : "Run"}
-                </button>
-              )}
+              <button
+                type="button"
+                className="review-modal__confirm"
+                onClick={handleRunCommand}
+                disabled={commandRunning || !editingCommand.trim()}
+              >
+                {commandRunning ? "Running..." : "Run"}
+              </button>
             </div>
           </div>
         </div>
       )}
       <main className="review-body">
         <ReviewView
-          files={files}
-          annotations={annotations}
+          files={activeTab.files}
+          annotations={activeTab.annotations}
           diffMode={diffMode}
-          collapsedFiles={collapsedFiles}
+          collapsedFiles={activeTab.collapsedFiles}
           onToggleCollapsed={toggleCollapsed}
-          viewedFiles={viewedFiles}
+          viewedFiles={activeTab.viewedFiles}
           onToggleViewed={toggleViewed}
           shiftKeyHeld={shiftKeyHeld}
-          addAnnotation={annotationActions.addAnnotation}
-          updateComment={annotationActions.updateComment}
-          deleteAnnotation={annotationActions.deleteAnnotation}
+          addAnnotation={addAnnotation}
+          updateComment={(annotationId, comment) => {
+            updateActiveTab((tab) => ({
+              ...tab,
+              annotations: updateAnnotationComment(tab.annotations, annotationId, comment)
+            }));
+          }}
+          deleteAnnotation={(annotationId) => {
+            updateActiveTab((tab) => ({
+              ...tab,
+              annotations: removeAnnotation(tab.annotations, annotationId)
+            }));
+          }}
+          tabs={tabs.map((tab) => ({ id: tab.id, command: tab.command, annotationCount: tab.annotations.length }))}
+          activeTabIndex={activeTabIndex}
+          onTabChange={setActiveTabIndex}
         />
 
         <section className="review-panel">
@@ -354,17 +368,21 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
             </div>
           </div>
           <div className="review-panel__body">
-            {annotations.length > 0 ? (
+            {totalAnnotations > 0 ? (
               <div className="annotation-list">
-                {annotations.map((annotation) => (
-                  <article key={annotation.id} className="annotation-card">
-                    <div className="annotation-card__header">
-                      <span className="annotation-card__id">{annotation.id}</span>
-                      <span className="annotation-card__ref">{formatAnnotationReference(annotation)}</span>
-                    </div>
-                    <p className="annotation-card__comment">{truncateAnnotationSummary(annotation.comment, 120)}</p>
-                  </article>
-                ))}
+                {tabs.flatMap((tab, tabIndex) =>
+                  tab.annotations.map((annotation) => (
+                    <article key={`${tabIndex}-${annotation.id}`} className="annotation-card">
+                      <div className="annotation-card__header">
+                        <span className="annotation-card__id">
+                          {tabs.length > 1 ? `V${tabIndex + 1}/${annotation.id}` : annotation.id}
+                        </span>
+                        <span className="annotation-card__ref">{formatAnnotationReference(annotation)}</span>
+                      </div>
+                      <p className="annotation-card__comment">{truncateAnnotationSummary(annotation.comment, 120)}</p>
+                    </article>
+                  ))
+                )}
               </div>
             ) : (
               <p className="empty-state">
