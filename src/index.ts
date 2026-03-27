@@ -35,7 +35,10 @@ const AnnotateParamsSchema = Type.Object(
       Type.String({ description: "Review ID returned by request. Use with action=detail." })
     ),
     annotationId: Type.Optional(
-      Type.String({ description: "Annotation ID within the review. Use with action=detail." })
+      Type.Array(
+        Type.String({ description: "Annotation ID (e.g. \"A1\") or range (e.g. \"A1..A3\")" }),
+        { description: "Annotation IDs to retrieve. Supports ranges like \"A1..A3\"." }
+      )
     )
   },
   { additionalProperties: false }
@@ -52,7 +55,7 @@ type RequestInput = {
 type DetailInput = {
   action: "detail";
   reviewId: string;
-  annotationId: string;
+  annotationIds: string[];
 };
 
 export default function (pi: ExtensionAPI) {
@@ -102,6 +105,7 @@ export default function (pi: ExtensionAPI) {
     promptGuidelines: [
       "Use annotate.request to ask the user for annotations on command output.",
       "The request result includes an annotation overview. Use annotate.detail to get full context for a specific annotation.",
+      "Use annotate.detail with annotation IDs like [\"A1\"] or ranges like [\"A1..A3\"] to get context for annotations.",
       "Prefer command mode when the content should stay out of the model context."
     ],
     parameters: AnnotateParamsSchema,
@@ -182,15 +186,21 @@ export default function (pi: ExtensionAPI) {
       });
     }
 
-    const annotation = review.annotations.find((item) => item.id === params.annotationId);
-    if (!annotation) {
-      return createResult("detail", `Annotation ${params.annotationId} was not found in ${params.reviewId}.`, {
-        error: `annotation not found: ${params.annotationId}`,
-        review
-      });
+    const expandedIds = expandAnnotationIds(params.annotationIds);
+    const parts: string[] = [];
+    let lastAnnotation: Annotation | undefined;
+
+    for (const id of expandedIds) {
+      const annotation = review.annotations.find((item) => item.id === id);
+      if (!annotation) {
+        parts.push(`Annotation ${id} was not found in ${params.reviewId}.`);
+      } else {
+        parts.push(formatDetail(review, annotation));
+        lastAnnotation = annotation;
+      }
     }
 
-    return createResult("detail", formatDetail(review, annotation), { review, annotation });
+    return createResult("detail", parts.join("\n\n---\n\n"), { review, annotation: lastAnnotation });
   }
 
   async function loadReviewSource(
@@ -272,15 +282,32 @@ function parseDetailInput(params: AnnotateParams): DetailInput | { error: string
     return { error: "annotate.detail requires reviewId." };
   }
 
-  if (params.annotationId === undefined) {
+  if (params.annotationId === undefined || params.annotationId.length === 0) {
     return { error: "annotate.detail requires annotationId." };
   }
 
   return {
     action: "detail",
     reviewId: params.reviewId,
-    annotationId: params.annotationId
+    annotationIds: params.annotationId
   };
+}
+
+function expandAnnotationIds(input: string[]): string[] {
+  const ids: string[] = [];
+  for (const item of input) {
+    const rangeMatch = /^A(\d+)\.\.A(\d+)$/.exec(item);
+    if (rangeMatch) {
+      const start = parseInt(rangeMatch[1], 10);
+      const end = parseInt(rangeMatch[2], 10);
+      for (let i = Math.min(start, end); i <= Math.max(start, end); i++) {
+        ids.push(`A${i}`);
+      }
+    } else {
+      ids.push(item);
+    }
+  }
+  return ids;
 }
 
 function combineCommandOutput(stdout: string, stderr: string, exitCode: number | undefined): string {
@@ -389,15 +416,18 @@ function renderCall(args: AnnotateParams, theme: Theme) {
         0
       );
     }
-    case "detail":
+    case "detail": {
+      const ids = args.annotationId ?? [];
+      const idLabel = ids.length === 0 ? "(missing annotationId)" : ids.length === 1 ? ids[0] : `${ids.length} annotations`;
       return new Text(
         theme.fg("toolTitle", theme.bold("annotate ")) +
           theme.fg("muted", `detail ${args.reviewId ?? "(missing reviewId)"}`) +
           " " +
-          theme.fg("accent", args.annotationId ?? "(missing annotationId)"),
+          theme.fg("accent", idLabel),
         0,
         0
       );
+    }
   }
 }
 
