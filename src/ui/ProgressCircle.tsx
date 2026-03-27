@@ -13,7 +13,8 @@ export function ProgressCircle({ total, viewed }: ProgressCircleProps) {
   const filled = total > 0 ? (viewed / total) * circumference : 0;
 
   return (
-    <svg width={28} height={28} viewBox="0 0 28 28" className="progress-circle">
+    <span className="progress-circle">
+    <svg width={28} height={28} viewBox="0 0 28 28">
       <circle cx={14} cy={14} r={r} fill="none" stroke="#30363d" strokeWidth={3} />
       <circle
         cx={14}
@@ -27,17 +28,8 @@ export function ProgressCircle({ total, viewed }: ProgressCircleProps) {
         strokeLinecap="round"
         style={{ transition: "stroke-dasharray 0.3s ease" }}
       />
-      <text
-        x={14}
-        y={14}
-        textAnchor="middle"
-        dominantBaseline="central"
-        fill="#e6edf3"
-        fontSize={9}
-        fontWeight={600}
-      >
-        {viewed}/{total}
-      </text>
     </svg>
+    <span className="progress-circle__label">{viewed}/{total}</span>
+    </span>
   );
 }

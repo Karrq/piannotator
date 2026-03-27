@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { DiffModeEnum } from "@git-diff-view/react";
 import type { Annotation, DiffAnnotation, DiffAnnotationDraft, DiffAnnotationLineSource, ReviewFile } from "../types.js";
 import { DiffPanel } from "./DiffPanel.js";
@@ -64,6 +64,41 @@ export function ReviewView({ files, annotations, diffMode, collapsedFiles, onTog
       setActiveFilePath(orderedFiles[0]?.displayPath ?? "");
     }
   }, [activeFilePath, orderedFiles]);
+
+  // When a file is collapsed, scroll so its header stays visible
+  const prevCollapsedRef = useRef(collapsedFiles);
+  useEffect(() => {
+    const prev = prevCollapsedRef.current;
+    prevCollapsedRef.current = collapsedFiles;
+    // Find a file that was just collapsed (in new set but not in previous)
+    for (const filePath of collapsedFiles) {
+      if (!prev.has(filePath)) {
+        const element = panelRefs.current.get(filePath);
+        if (element) {
+          const rect = element.getBoundingClientRect();
+          // Only scroll if the header is above the viewport (content shifted up)
+          if (rect.top < 68) {
+            const top = Math.max(0, window.scrollY + rect.top - 96);
+            window.scrollTo({ top, behavior: "instant" });
+          }
+        }
+        break;
+      }
+    }
+  }, [collapsedFiles]);
+
+  // Scroll to the active file when diff mode changes to preserve context
+  const prevDiffModeRef = useRef(diffMode);
+  useEffect(() => {
+    if (prevDiffModeRef.current !== diffMode) {
+      prevDiffModeRef.current = diffMode;
+      const element = panelRefs.current.get(activeFilePath);
+      if (element) {
+        const top = Math.max(0, window.scrollY + element.getBoundingClientRect().top - 96);
+        window.scrollTo({ top, behavior: "instant" });
+      }
+    }
+  }, [diffMode, activeFilePath]);
 
   useEffect(() => {
     if (rangeAnchor && !orderedFiles.some((file) => file.displayPath === rangeAnchor.filePath)) {

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { type DiffModeEnum, DiffView, SplitSide } from "@git-diff-view/react";
+import { ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
 import { highlighter } from "@git-diff-view/lowlight";
 import type { DiffAnnotation, DiffAnnotationDraft, DiffAnnotationLineSource, ReviewFile } from "../types.js";
 import { buildDiffExtendData, createDiffViewFile } from "./diff-panel-helpers.js";
@@ -50,12 +51,7 @@ export function DiffPanel({
       <div className="review-panel__header review-panel__header--sticky">
         <div className="review-panel__header-left">
           <button type="button" className="diff-panel__collapse-btn" onClick={onToggleCollapse} aria-label={collapsed ? "Expand file" : "Collapse file"}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              {collapsed
-                ? <path d="M6.427 4.427a.25.25 0 0 1 .354 0l3.396 3.396a.25.25 0 0 1 0 .354l-3.396 3.396a.25.25 0 0 1-.354-.354L9.646 8 6.427 4.781a.25.25 0 0 1 0-.354Z" />
-                : <path d="M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z" />
-              }
-            </svg>
+            {collapsed ? <ChevronRightIcon size={16} /> : <ChevronDownIcon size={16} />}
           </button>
           <div>
             <div className="review-panel__title">{file.displayPath}</div>
