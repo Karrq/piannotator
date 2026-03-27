@@ -113,6 +113,7 @@ export interface ReviewBridgeInit {
 export interface ReviewBridgeVersion {
   command?: string;
   annotations: AnnotationDraft[];
+  files?: ReviewFile[];
 }
 
 export interface ReviewBridgeSubmitMessage {

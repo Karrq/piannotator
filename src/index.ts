@@ -319,9 +319,9 @@ export default function (pi: ExtensionAPI) {
 
     for (let vi = 0; vi < keptVersions.length; vi++) {
       const version = keptVersions[vi];
-      // Find original index to get correct files
       const originalIndex = versions.indexOf(version);
-      reviewVersions.push({ command: version.command, files: originalIndex === 0 ? initialFiles : [] });
+      const files = version.files ?? (originalIndex === 0 ? initialFiles : []);
+      reviewVersions.push({ command: version.command, files });
       for (const draft of version.annotations) {
         allDrafts.push({ ...draft, versionIndex: vi });
       }

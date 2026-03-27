@@ -105,7 +105,8 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
     const comment = overallComment.trim() || undefined;
     const versions: ReviewBridgeVersion[] = tabs.map((tab) => ({
       command: tab.command || undefined,
-      annotations: annotationsToDrafts(tab.annotations)
+      annotations: annotationsToDrafts(tab.annotations),
+      files: tab.files
     }));
     onSubmit(versions, comment);
   };
