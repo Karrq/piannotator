@@ -14,6 +14,8 @@ interface DiffPanelProps {
   diffMode: DiffModeEnum;
   collapsed: boolean;
   onToggleCollapse: () => void;
+  isViewed: boolean;
+  onToggleViewed: () => void;
   shiftKeyHeld: boolean;
   rangeAnchor: RangeAnchor | null;
   onRangeAnchorChange: (anchor: RangeAnchor | null) => void;
@@ -28,6 +30,8 @@ export function DiffPanel({
   diffMode,
   collapsed,
   onToggleCollapse,
+  isViewed,
+  onToggleViewed,
   shiftKeyHeld,
   rangeAnchor,
   onRangeAnchorChange,
@@ -61,6 +65,10 @@ export function DiffPanel({
             </div>
           </div>
         </div>
+        <label className="diff-panel__viewed-toggle" onClick={(e) => e.stopPropagation()}>
+          <input type="checkbox" checked={isViewed} onChange={onToggleViewed} />
+          Viewed
+        </label>
       </div>
       {!collapsed && <div className="review-panel__body review-panel__body--diff">
         <DiffErrorBoundary fallback={<DiffRenderFallback file={file} />}>

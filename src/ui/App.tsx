@@ -30,6 +30,7 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
   const [pendingFinalAction, setPendingFinalAction] = useState<PendingFinalAction>(null);
   const [diffMode, setDiffMode] = useState(DiffModeEnum.Unified);
   const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
+  const [viewedFiles, setViewedFiles] = useState<Set<string>>(new Set());
 
   const subtitle = useMemo(() => {
     if (init.mode === "diff") {
@@ -131,6 +132,20 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
     setAnnotations([]);
   };
 
+  const toggleViewed = (filePath: string) => {
+    setViewedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(filePath)) {
+        next.delete(filePath);
+      } else {
+        next.add(filePath);
+        // Auto-collapse when marking as viewed
+        setCollapsedFiles((collapsed) => new Set([...collapsed, filePath]));
+      }
+      return next;
+    });
+  };
+
   const toggleCollapsed = (filePath: string) => {
     setCollapsedFiles((prev) => {
       const next = new Set(prev);
@@ -172,6 +187,8 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
         isDiffMode={init.mode === "diff"}
         diffMode={diffMode}
         onDiffModeChange={setDiffMode}
+        totalFiles={init.mode === "diff" ? init.files.length : 0}
+        viewedCount={viewedFiles.size}
         onSubmit={openSubmitConfirmation}
         onCancel={openCancelConfirmation}
         onClear={clearAnnotations}
@@ -207,6 +224,8 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
             diffMode={diffMode}
             collapsedFiles={collapsedFiles}
             onToggleCollapsed={toggleCollapsed}
+            viewedFiles={viewedFiles}
+            onToggleViewed={toggleViewed}
             shiftKeyHeld={shiftKeyHeld}
             addDiffAnnotation={annotationActions.addDiffAnnotation}
             updateComment={annotationActions.updateComment}

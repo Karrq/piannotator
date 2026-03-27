@@ -12,6 +12,8 @@ interface ReviewViewProps {
   diffMode: DiffModeEnum;
   collapsedFiles: Set<string>;
   onToggleCollapsed: (filePath: string) => void;
+  viewedFiles: Set<string>;
+  onToggleViewed: (filePath: string) => void;
   shiftKeyHeld: boolean;
   addDiffAnnotation: (draft: DiffAnnotationDraft) => void;
   updateComment: (annotationId: string, comment: string) => void;
@@ -22,7 +24,7 @@ interface FileScopedRangeAnchor extends RangeAnchor {
   filePath: string;
 }
 
-export function ReviewView({ files, annotations, diffMode, collapsedFiles, onToggleCollapsed, shiftKeyHeld, addDiffAnnotation, updateComment, deleteAnnotation }: ReviewViewProps) {
+export function ReviewView({ files, annotations, diffMode, collapsedFiles, onToggleCollapsed, viewedFiles, onToggleViewed, shiftKeyHeld, addDiffAnnotation, updateComment, deleteAnnotation }: ReviewViewProps) {
   const diffAnnotations = annotations.filter((annotation): annotation is DiffAnnotation => annotation.kind === "diff");
   const orderedFiles = useMemo(() => sortFilesForTreeOrder(files), [files]);
   const [activeFilePath, setActiveFilePath] = useState(orderedFiles[0]?.displayPath ?? "");
@@ -167,6 +169,8 @@ export function ReviewView({ files, annotations, diffMode, collapsedFiles, onTog
               diffMode={diffMode}
               collapsed={collapsedFiles.has(file.displayPath)}
               onToggleCollapse={() => onToggleCollapsed(file.displayPath)}
+              isViewed={viewedFiles.has(file.displayPath)}
+              onToggleViewed={() => onToggleViewed(file.displayPath)}
               shiftKeyHeld={shiftKeyHeld}
               rangeAnchor={toLocalAnchor(rangeAnchor, file.displayPath)}
               onRangeAnchorChange={(nextAnchor) => {

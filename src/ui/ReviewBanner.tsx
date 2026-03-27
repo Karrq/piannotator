@@ -8,6 +8,8 @@ interface ReviewBannerProps {
   isDiffMode: boolean;
   diffMode: DiffModeEnum;
   onDiffModeChange: (mode: DiffModeEnum) => void;
+  totalFiles: number;
+  viewedCount: number;
   onSubmit: () => void;
   onCancel: () => void;
   onClear: () => void;
@@ -21,6 +23,8 @@ export function ReviewBanner({
   isDiffMode,
   diffMode,
   onDiffModeChange,
+  totalFiles,
+  viewedCount,
   onSubmit,
   onCancel,
   onClear
