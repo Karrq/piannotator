@@ -111,7 +111,7 @@ export function DiffPanel({ file, annotations, onAddAnnotation, onUpdateAnnotati
             );
           }}
           renderExtendLine={({ data }) => (
-            <CommentThread data={data} onUpdateComment={onUpdateAnnotation} onDeleteComment={onDeleteAnnotation} />
+            <CommentThread comments={data.comments} onUpdateComment={onUpdateAnnotation} onDeleteComment={onDeleteAnnotation} />
           )}
         />
       </div>

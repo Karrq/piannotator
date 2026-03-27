@@ -303,6 +303,51 @@ button:disabled {
   white-space: pre;
 }
 
+.review-panel__body--text {
+  padding: 0;
+}
+
+.text-review {
+  display: grid;
+}
+
+.text-review__line-group {
+  border-top: 1px solid #21262d;
+}
+
+.text-review__line-group:first-child {
+  border-top: 0;
+}
+
+.text-review__line {
+  display: grid;
+  grid-template-columns: 2.5rem 3rem minmax(0, 1fr);
+  align-items: start;
+  gap: 0.75rem;
+  padding: 0.4rem 1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.text-review__line--annotated {
+  background: rgba(56, 139, 253, 0.12);
+}
+
+.text-review__line--selected {
+  background: rgba(187, 128, 9, 0.18);
+}
+
+.text-review__add {
+  width: 2rem;
+  padding: 0.2rem 0;
+}
+
+.text-review__line-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .review-code__line {
   display: block;
 }

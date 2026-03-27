@@ -75,12 +75,9 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
     setAnnotations([]);
   };
 
-  const addPlaceholderTextAnnotation = () => {
-    addAnnotation(createPlaceholderTextAnnotation(annotations.length, init));
-  };
-
   const annotationActions = {
     addDiffAnnotation: (draft: DiffAnnotationDraft) => addAnnotation(draft),
+    addTextAnnotation: (draft: TextAnnotationDraft) => addAnnotation(draft),
     updateComment: (annotationId: string, comment: string) => {
       setAnnotations((current) => updateAnnotationComment(current, annotationId, comment));
     },
@@ -112,11 +109,6 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
           <div className="review-summary__item">
             <span className="review-summary__label">Controls</span>
             <div className="review-actions">
-              {init.mode === "text" ? (
-                <button type="button" onClick={addPlaceholderTextAnnotation}>
-                  Add placeholder annotation
-                </button>
-              ) : null}
               <button type="button" onClick={clearAnnotations} disabled={annotations.length === 0}>
                 Clear annotations
               </button>
@@ -125,9 +117,21 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
         </section>
 
         {init.mode === "diff" ? (
-          <ReviewView files={init.files} annotations={annotations} {...annotationActions} />
+          <ReviewView
+            files={init.files}
+            annotations={annotations}
+            addDiffAnnotation={annotationActions.addDiffAnnotation}
+            updateComment={annotationActions.updateComment}
+            deleteAnnotation={annotationActions.deleteAnnotation}
+          />
         ) : (
-          <TextReview content={init.content} annotations={annotations} />
+          <TextReview
+            content={init.content}
+            annotations={annotations}
+            onAddAnnotation={annotationActions.addTextAnnotation}
+            onUpdateAnnotation={annotationActions.updateComment}
+            onDeleteAnnotation={annotationActions.deleteAnnotation}
+          />
         )}
 
         <section className="review-panel">
@@ -154,7 +158,7 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
               <p className="empty-state">
                 {init.mode === "diff"
                   ? "Use the inline plus button to add single-line diff comments."
-                  : "Add a placeholder annotation to exercise submit and cancel while the real text review UI is under construction."}
+                  : "Use the line buttons to add single-line or range comments in text mode."}
               </p>
             )}
           </div>
@@ -162,19 +166,4 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
       </main>
     </div>
   );
-}
-
-function createPlaceholderTextAnnotation(index: number, init: ReviewBridgeInit): TextAnnotationDraft {
-  const lines = init.content.split(/\r?\n/);
-  const firstContentLine = lines.findIndex((line) => line.trim().length > 0);
-  const lineStart = firstContentLine === -1 ? 1 : firstContentLine + 1 + index;
-  const clampedLine = Math.min(Math.max(lineStart, 1), Math.max(lines.length, 1));
-  const comment = `Placeholder text note ${index + 1} on line ${clampedLine}.`;
-
-  return {
-    kind: "text",
-    lineSource: "text",
-    lineStart: clampedLine,
-    comment
-  };
 }

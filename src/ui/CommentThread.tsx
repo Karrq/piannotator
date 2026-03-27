@@ -1,20 +1,19 @@
 import { useState } from "react";
-import { formatAnnotationReference, type DiffAnnotation } from "../types.js";
+import { formatAnnotationReference, type Annotation } from "../types.js";
 import { CommentForm } from "./CommentForm.js";
-import type { DiffThreadData } from "./diff-panel-helpers.js";
 
-interface CommentThreadProps {
-  data: DiffThreadData;
+interface CommentThreadProps<T extends Annotation = Annotation> {
+  comments: T[];
   onUpdateComment: (annotationId: string, comment: string) => void;
   onDeleteComment: (annotationId: string) => void;
 }
 
-export function CommentThread({ data, onUpdateComment, onDeleteComment }: CommentThreadProps) {
+export function CommentThread<T extends Annotation>({ comments, onUpdateComment, onDeleteComment }: CommentThreadProps<T>) {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   return (
     <div className="comment-thread">
-      {data.comments.map((comment) => {
+      {comments.map((comment) => {
         const isEditing = editingId === comment.id;
         return (
           <article key={comment.id} className="annotation-card annotation-card--inline">
@@ -24,7 +23,7 @@ export function CommentThread({ data, onUpdateComment, onDeleteComment }: Commen
             </div>
             {isEditing ? (
               <CommentForm
-                label={formatReferenceLabel(comment)}
+                label={formatReferenceLabel(comment.lineStart, comment.lineEnd)}
                 initialComment={comment.comment}
                 submitLabel="Save"
                 onCancel={() => setEditingId(null)}
@@ -53,8 +52,6 @@ export function CommentThread({ data, onUpdateComment, onDeleteComment }: Commen
   );
 }
 
-function formatReferenceLabel(annotation: DiffAnnotation): string {
-  return annotation.lineEnd === undefined
-    ? `Line ${annotation.lineStart}`
-    : `Lines ${annotation.lineStart}-${annotation.lineEnd}`;
+function formatReferenceLabel(lineStart: number, lineEnd?: number): string {
+  return lineEnd === undefined ? `Line ${lineStart}` : `Lines ${lineStart}-${lineEnd}`;
 }
