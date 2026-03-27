@@ -5,9 +5,18 @@ interface ReviewBannerProps {
   canSubmit: boolean;
   onSubmit: () => void;
   onCancel: () => void;
+  onClear: () => void;
 }
 
-export function ReviewBanner({ title, subtitle, annotationCount, canSubmit, onSubmit, onCancel }: ReviewBannerProps) {
+export function ReviewBanner({
+  title,
+  subtitle,
+  annotationCount,
+  canSubmit,
+  onSubmit,
+  onCancel,
+  onClear
+}: ReviewBannerProps) {
   return (
     <header className="review-banner">
       <div className="review-banner__meta">
@@ -17,12 +26,15 @@ export function ReviewBanner({ title, subtitle, annotationCount, canSubmit, onSu
         </div>
       </div>
       <div className="review-banner__actions">
-        <span className="review-banner__hint">⌘↩ submit · Esc cancel</span>
         <button type="button" onClick={onCancel}>
           Cancel
         </button>
+        <button type="button" onClick={onClear} disabled={annotationCount === 0}>
+          Clear
+        </button>
         <button type="button" className="review-banner__submit" onClick={onSubmit} disabled={!canSubmit}>
-          Submit review
+          <span>Submit review</span>
+          <span className="review-banner__badge">{annotationCount}</span>
         </button>
       </div>
     </header>

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildFileTree } from "../src/ui/file-tree-data.js";
+import { buildFileTree, sortFilesForTreeOrder } from "../src/ui/file-tree-data.js";
 import type { ReviewFile } from "../src/types.js";
 
 const files: ReviewFile[] = [
@@ -39,5 +39,32 @@ assert.equal(tree[0].annotationCount, 2);
 assert.equal(tree[0].children?.length, 2);
 assert.equal(tree[0].children?.[0].name, "utils");
 assert.equal(tree[0].children?.[1].name, "a.ts");
+
+const orderedFiles = sortFilesForTreeOrder([
+  {
+    ...files[0],
+    oldPath: "z.ts",
+    newPath: "z.ts",
+    displayPath: "z.ts"
+  },
+  {
+    ...files[0],
+    oldPath: "src/index.ts",
+    newPath: "src/index.ts",
+    displayPath: "src/index.ts"
+  },
+  {
+    ...files[0],
+    oldPath: "src/utils/math.ts",
+    newPath: "src/utils/math.ts",
+    displayPath: "src/utils/math.ts"
+  }
+]);
+
+assert.deepEqual(
+  orderedFiles.map((file) => file.displayPath),
+  ["src/utils/math.ts", "src/index.ts", "z.ts"],
+  "expected diff panels to follow the same directory-first ordering as the tree"
+);
 
 console.log("File tree validation passed.");

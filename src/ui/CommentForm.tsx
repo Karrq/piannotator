@@ -18,6 +18,8 @@ export function CommentForm({ label, initialComment = "", submitLabel = "Add com
     textareaRef.current?.setSelectionRange(length, length);
   }, [initialComment]);
 
+  const trimmedComment = comment.trim();
+
   return (
     <div className="comment-form">
       <div className="comment-form__label">{label}</div>
@@ -27,6 +29,20 @@ export function CommentForm({ label, initialComment = "", submitLabel = "Add com
         rows={4}
         value={comment}
         onChange={(event) => setComment(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            onCancel();
+            return;
+          }
+
+          if (event.key === "Enter" && event.metaKey && trimmedComment.length > 0) {
+            event.preventDefault();
+            event.stopPropagation();
+            onSubmit(trimmedComment);
+          }
+        }}
         placeholder="Add a review note"
       />
       <div className="comment-form__actions">
@@ -36,8 +52,8 @@ export function CommentForm({ label, initialComment = "", submitLabel = "Add com
         <button
           type="button"
           className="comment-form__submit"
-          onClick={() => onSubmit(comment.trim())}
-          disabled={comment.trim().length === 0}
+          onClick={() => onSubmit(trimmedComment)}
+          disabled={trimmedComment.length === 0}
         >
           {submitLabel}
         </button>

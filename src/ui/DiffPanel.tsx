@@ -47,9 +47,6 @@ export function DiffPanel({
         </div>
       </div>
       <div className="review-panel__body review-panel__body--diff">
-        <div className="review-hint">
-          Click the inline plus button to comment on one line. Hold Shift and click another line to turn the active anchor into a range.
-        </div>
         <DiffErrorBoundary fallback={<DiffRenderFallback file={file} />}>
           <DiffView
             diffFile={diffFile}

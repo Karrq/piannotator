@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Annotation, DiffAnnotation, DiffAnnotationDraft, DiffAnnotationLineSource, ReviewFile } from "../types.js";
 import { DiffPanel } from "./DiffPanel.js";
 import { FileTree } from "./FileTree.js";
-import { buildFileTree } from "./file-tree-data.js";
+import { buildFileTree, sortFilesForTreeOrder } from "./file-tree-data.js";
 import type { RangeAnchor } from "./range-selection.js";
 
 interface ReviewViewProps {
@@ -20,29 +20,76 @@ interface FileScopedRangeAnchor extends RangeAnchor {
 
 export function ReviewView({ files, annotations, shiftKeyHeld, addDiffAnnotation, updateComment, deleteAnnotation }: ReviewViewProps) {
   const diffAnnotations = annotations.filter((annotation): annotation is DiffAnnotation => annotation.kind === "diff");
-  const [activeFilePath, setActiveFilePath] = useState(files[0]?.displayPath ?? "");
+  const orderedFiles = useMemo(() => sortFilesForTreeOrder(files), [files]);
+  const [activeFilePath, setActiveFilePath] = useState(orderedFiles[0]?.displayPath ?? "");
   const [rangeAnchor, setRangeAnchor] = useState<FileScopedRangeAnchor | null>(null);
   const panelRefs = useRef(new Map<string, HTMLDivElement>());
+  const pendingScrollTargetRef = useRef<string | null>(null);
+  const pendingScrollTimerRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    if (!files.some((file) => file.displayPath === activeFilePath)) {
-      setActiveFilePath(files[0]?.displayPath ?? "");
+  const finishPendingScroll = () => {
+    const target = pendingScrollTargetRef.current;
+    pendingScrollTargetRef.current = null;
+
+    if (pendingScrollTimerRef.current !== null) {
+      window.clearTimeout(pendingScrollTimerRef.current);
+      pendingScrollTimerRef.current = null;
     }
-  }, [activeFilePath, files]);
+
+    if (target) {
+      setActiveFilePath(target);
+    }
+  };
+
+  const schedulePendingScrollFinish = () => {
+    if (pendingScrollTargetRef.current === null) {
+      return;
+    }
+
+    if (pendingScrollTimerRef.current !== null) {
+      window.clearTimeout(pendingScrollTimerRef.current);
+    }
+
+    pendingScrollTimerRef.current = window.setTimeout(finishPendingScroll, 140);
+  };
 
   useEffect(() => {
-    if (rangeAnchor && !files.some((file) => file.displayPath === rangeAnchor.filePath)) {
+    if (!orderedFiles.some((file) => file.displayPath === activeFilePath)) {
+      setActiveFilePath(orderedFiles[0]?.displayPath ?? "");
+    }
+  }, [activeFilePath, orderedFiles]);
+
+  useEffect(() => {
+    if (rangeAnchor && !orderedFiles.some((file) => file.displayPath === rangeAnchor.filePath)) {
       setRangeAnchor(null);
     }
-  }, [files, rangeAnchor]);
+  }, [orderedFiles, rangeAnchor]);
 
   useEffect(() => {
-    if (files.length <= 1) {
+    window.addEventListener("scroll", schedulePendingScrollFinish, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", schedulePendingScrollFinish);
+
+      if (pendingScrollTimerRef.current !== null) {
+        window.clearTimeout(pendingScrollTimerRef.current);
+        pendingScrollTimerRef.current = null;
+      }
+
+      pendingScrollTargetRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (orderedFiles.length <= 1) {
       return;
     }
 
     const observer = new IntersectionObserver(
       (entries) => {
+        if (pendingScrollTargetRef.current !== null) {
+          return;
+        }
+
         const visible = entries
           .filter((entry) => entry.isIntersecting)
           .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
@@ -62,7 +109,7 @@ export function ReviewView({ files, annotations, shiftKeyHeld, addDiffAnnotation
     }
 
     return () => observer.disconnect();
-  }, [files]);
+  }, [orderedFiles]);
 
   const annotationsByFile = useMemo(() => {
     const grouped = new Map<string, DiffAnnotation[]>();
@@ -74,10 +121,10 @@ export function ReviewView({ files, annotations, shiftKeyHeld, addDiffAnnotation
     return grouped;
   }, [diffAnnotations]);
 
-  const fileTreeNodes = useMemo(() => buildFileTree(files, diffAnnotations), [diffAnnotations, files]);
-  const showFileTree = files.length > 1;
+  const fileTreeNodes = useMemo(() => buildFileTree(orderedFiles, diffAnnotations), [diffAnnotations, orderedFiles]);
+  const showFileTree = orderedFiles.length > 1;
 
-  if (!files[0]) {
+  if (!orderedFiles[0]) {
     return (
       <section className="review-panel">
         <div className="review-panel__header">
@@ -97,7 +144,7 @@ export function ReviewView({ files, annotations, shiftKeyHeld, addDiffAnnotation
     <div className={showFileTree ? "review-view-layout" : "review-file-list"}>
       {showFileTree ? <FileTree nodes={fileTreeNodes} activeFilePath={activeFilePath} onSelectFile={scrollToFile} /> : null}
       <div className="review-file-list">
-        {files.map((file) => (
+        {orderedFiles.map((file) => (
           <div
             key={file.displayPath}
             id={toFileSectionId(file.displayPath)}
@@ -130,7 +177,16 @@ export function ReviewView({ files, annotations, shiftKeyHeld, addDiffAnnotation
 
   function scrollToFile(filePath: string) {
     setActiveFilePath(filePath);
-    panelRefs.current.get(filePath)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    pendingScrollTargetRef.current = filePath;
+    schedulePendingScrollFinish();
+
+    const element = panelRefs.current.get(filePath);
+    if (!element) {
+      return;
+    }
+
+    const top = Math.max(0, window.scrollY + element.getBoundingClientRect().top - 96);
+    window.scrollTo({ top, behavior: "smooth" });
   }
 }
 

@@ -1,12 +1,17 @@
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { prompt } from "glimpseui";
+import { open, prompt } from "glimpseui";
 import type { ReviewClient } from "./review-client.js";
 import type { ReviewBridgeInit, ReviewBridgeMessage, ReviewClientRequest, ReviewClientResult } from "./types.js";
 
 const REVIEW_UI_BOOTSTRAP_MARKER = "<!-- PIANNOTATOR_BOOTSTRAP -->";
+const REVIEW_WINDOW_OPTIONS = {
+  width: 1200,
+  height: 800
+} as const;
 
 export interface GlimpseReviewClientOptions {
   htmlPath?: string;
@@ -16,12 +21,12 @@ export interface GlimpseReviewClientOptions {
 
 export class GlimpseReviewClient implements ReviewClient {
   private readonly loadHtml: () => Promise<string>;
-  private readonly promptImpl: typeof prompt;
+  private readonly promptImpl?: typeof prompt;
 
   constructor(options: GlimpseReviewClientOptions = {}) {
     const htmlPath = options.htmlPath ?? getDefaultReviewUiPath();
     this.loadHtml = options.loadHtml ?? (() => readFile(htmlPath, "utf8"));
-    this.promptImpl = options.promptImpl ?? prompt;
+    this.promptImpl = options.promptImpl;
   }
 
   async requestReview(input: ReviewClientRequest): Promise<ReviewClientResult | null> {
@@ -41,11 +46,12 @@ export class GlimpseReviewClient implements ReviewClient {
       annotations: []
     });
 
-    const message = (await this.promptImpl(html, {
-      width: 1200,
-      height: 800,
-      title: input.title
-    })) as ReviewBridgeMessage | null;
+    const message = this.promptImpl
+      ? ((await this.promptImpl(html, {
+          ...REVIEW_WINDOW_OPTIONS,
+          title: input.title
+        })) as ReviewBridgeMessage | null)
+      : await promptWithReloadableFile(input.title, html);
 
     if (!message || message.type === "cancel") {
       return null;
@@ -76,6 +82,93 @@ export function getDefaultReviewUiPath(): string {
 
   const compiledCandidate = path.resolve(sourceDir, "../../dist/review-ui.html");
   return compiledCandidate;
+}
+
+async function promptWithReloadableFile(title: string, html: string): Promise<ReviewBridgeMessage | null> {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "piannotator-review-"));
+  const htmlPath = path.join(tempDir, "review-ui.html");
+
+  try {
+    await writeFile(htmlPath, html, "utf8");
+  } catch (error) {
+    await rm(tempDir, { recursive: true, force: true });
+    throw error;
+  }
+
+  let win: ReturnType<typeof open>;
+  try {
+    // Glimpse prompt() loads HTML with loadHTMLString(), which makes WKWebView reload
+    // unreliable from the context menu. Loading a temp file keeps reload stable.
+    win = open("", {
+      ...REVIEW_WINDOW_OPTIONS,
+      title,
+      autoClose: true,
+      hidden: true
+    });
+  } catch (error) {
+    await rm(tempDir, { recursive: true, force: true });
+    throw error;
+  }
+
+  let stage: "blank" | "file-loading" | "ready" = "blank";
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    const cleanup = async () => {
+      await rm(tempDir, { recursive: true, force: true });
+    };
+
+    const resolveOnce = (value: ReviewBridgeMessage | null) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanup().then(
+        () => resolve(value),
+        (error) => reject(error)
+      );
+    };
+
+    const rejectOnce = (error: unknown) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanup().then(
+        () => reject(error),
+        (cleanupError) => reject(cleanupError)
+      );
+    };
+
+    win.on("ready", () => {
+      if (stage === "blank") {
+        stage = "file-loading";
+        win.loadFile(htmlPath);
+        return;
+      }
+
+      if (stage === "file-loading") {
+        stage = "ready";
+      }
+
+      win.show({ title });
+    });
+
+    win.once("message", (data) => {
+      resolveOnce(data as ReviewBridgeMessage);
+    });
+
+    win.once("closed", () => {
+      resolveOnce(null);
+    });
+
+    win.once("error", (error) => {
+      rejectOnce(error);
+    });
+  });
 }
 
 function serializeForInlineScript(payload: ReviewBridgeInit): string {

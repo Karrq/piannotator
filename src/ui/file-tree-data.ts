@@ -1,5 +1,42 @@
 import type { DiffAnnotation, ReviewFile } from "../types.js";
 
+export function sortFilesForTreeOrder(files: ReviewFile[]): ReviewFile[] {
+  return [...files].sort((left, right) => compareFilePathsForTreeOrder(left.displayPath, right.displayPath));
+}
+
+export function compareFilePathsForTreeOrder(leftPath: string, rightPath: string): number {
+  const leftSegments = leftPath.split("/");
+  const rightSegments = rightPath.split("/");
+  const maxLength = Math.max(leftSegments.length, rightSegments.length);
+
+  for (let index = 0; index < maxLength; index += 1) {
+    const leftSegment = leftSegments[index];
+    const rightSegment = rightSegments[index];
+
+    if (leftSegment === undefined) {
+      return -1;
+    }
+
+    if (rightSegment === undefined) {
+      return 1;
+    }
+
+    const leftIsDirectory = index < leftSegments.length - 1;
+    const rightIsDirectory = index < rightSegments.length - 1;
+
+    if (leftIsDirectory !== rightIsDirectory) {
+      return leftIsDirectory ? -1 : 1;
+    }
+
+    const byName = leftSegment.localeCompare(rightSegment);
+    if (byName !== 0) {
+      return byName;
+    }
+  }
+
+  return 0;
+}
+
 export interface FileTreeNodeData {
   id: string;
   name: string;

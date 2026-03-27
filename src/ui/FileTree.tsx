@@ -35,21 +35,19 @@ export function FileTree({ nodes, activeFilePath, onSelectFile }: FileTreeProps)
           disableDrag
           disableEdit
           selection={activeFilePath}
-          onSelect={(selectedNodes) => {
-            const node = selectedNodes[0];
-            if (node?.data.kind === "file") {
-              onSelectFile(node.data.path);
-            }
-          }}
         >
-          {FileTreeNode}
+          {(props) => <FileTreeNode {...props} onSelectFile={onSelectFile} />}
         </Tree>
       </div>
     </aside>
   );
 }
 
-function FileTreeNode({ node, style }: NodeRendererProps<FileTreeNodeData>) {
+interface FileTreeNodeProps extends NodeRendererProps<FileTreeNodeData> {
+  onSelectFile: (filePath: string) => void;
+}
+
+function FileTreeNode({ node, style, onSelectFile }: FileTreeNodeProps) {
   const isDirectory = node.data.kind === "directory";
 
   return (
@@ -65,21 +63,24 @@ function FileTreeNode({ node, style }: NodeRendererProps<FileTreeNodeData>) {
 
           node.select();
           node.activate();
+          onSelectFile(node.data.path);
         }}
       >
         <span className="file-tree-node__label">
           {isDirectory ? (node.isOpen ? "▾" : "▸") : "•"} {node.data.name}
         </span>
-        <span className="file-tree-node__stats">
-          <span className="file-tree-node__annotations">{node.data.annotationCount}</span>
-          <span className="file-tree-node__delta file-tree-node__delta--add">+{node.data.additions}</span>
-          <span className="file-tree-node__delta file-tree-node__delta--del">-{node.data.deletions}</span>
-        </span>
+        {!isDirectory ? (
+          <span className="file-tree-node__stats">
+            <span className="file-tree-node__annotations">{node.data.annotationCount}</span>
+            <span className="file-tree-node__delta file-tree-node__delta--add">+{node.data.additions}</span>
+            <span className="file-tree-node__delta file-tree-node__delta--del">-{node.data.deletions}</span>
+          </span>
+        ) : null}
       </button>
     </div>
   );
 }
 
 function getTreeHeight(): number {
-  return Math.max(window.innerHeight - 220, 280);
+  return Math.max(window.innerHeight - 196, 280);
 }

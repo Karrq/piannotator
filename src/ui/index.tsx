@@ -1,3 +1,4 @@
+import React from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.js";
 import "./styles.css";
@@ -21,21 +22,23 @@ if (!rootElement) {
 const root = createRoot(rootElement);
 const init = window.__PIANNOTATOR_INIT__ ?? createFallbackInit();
 
+// Glimpse's WKWebView has been flaky with JSX in this entry module.
+// Using createElement here keeps the bundled entry stable.
 root.render(
-  <App
-    init={init}
-    onSubmit={(annotations) => {
+  React.createElement(App, {
+    init,
+    onSubmit: (annotations) => {
       window.glimpse?.send({ type: "submit", annotations });
-    }}
-    onCancel={() => {
+    },
+    onCancel: () => {
       if (window.glimpse?.send) {
         window.glimpse.send({ type: "cancel" });
         return;
       }
 
       window.glimpse?.close?.();
-    }}
-  />
+    }
+  })
 );
 
 function createFallbackInit(): ReviewBridgeInit {

@@ -19,11 +19,14 @@ interface AppProps {
   onCancel: () => void;
 }
 
+type PendingFinalAction = "submit" | "cancel" | null;
+
 export function App({ init, onSubmit, onCancel }: AppProps) {
   const initialState = useMemo(() => materializeAnnotations(init.annotations), [init.annotations]);
   const [annotations, setAnnotations] = useState<Annotation[]>(initialState.annotations);
   const [nextAnnotationNumber, setNextAnnotationNumber] = useState(initialState.nextAnnotationNumber);
   const [shiftKeyHeld, setShiftKeyHeld] = useState(false);
+  const [pendingFinalAction, setPendingFinalAction] = useState<PendingFinalAction>(null);
 
   const subtitle = useMemo(() => {
     if (init.mode === "diff") {
@@ -36,6 +39,32 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
 
   const canSubmit = annotations.length > 0;
 
+  const dismissConfirmation = () => {
+    setPendingFinalAction(null);
+  };
+
+  const submitReview = () => {
+    dismissConfirmation();
+    onSubmit(annotationsToDrafts(annotations));
+  };
+
+  const cancelReview = () => {
+    dismissConfirmation();
+    onCancel();
+  };
+
+  const openSubmitConfirmation = () => {
+    if (!canSubmit) {
+      return;
+    }
+
+    setPendingFinalAction("submit");
+  };
+
+  const openCancelConfirmation = () => {
+    setPendingFinalAction("cancel");
+  };
+
   useEffect(() => {
     setAnnotations(initialState.annotations);
     setNextAnnotationNumber(initialState.nextAnnotationNumber);
@@ -43,19 +72,32 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Enter" && event.metaKey) {
+        event.preventDefault();
+
+        if (pendingFinalAction === "submit") {
+          submitReview();
+        } else if (pendingFinalAction === "cancel") {
+          cancelReview();
+        } else {
+          openSubmitConfirmation();
+        }
+        return;
+      }
+
       if (event.key === "Escape") {
         event.preventDefault();
-        onCancel();
+
+        if (pendingFinalAction !== null) {
+          dismissConfirmation();
+        } else {
+          openCancelConfirmation();
+        }
         return;
       }
 
       if (event.key === "Shift") {
         setShiftKeyHeld(true);
-      }
-
-      if (event.key === "Enter" && event.metaKey && canSubmit) {
-        event.preventDefault();
-        onSubmit(annotationsToDrafts(annotations));
       }
     };
 
@@ -71,9 +113,10 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [annotations, canSubmit, onCancel, onSubmit]);
+  }, [cancelReview, dismissConfirmation, openCancelConfirmation, openSubmitConfirmation, pendingFinalAction, submitReview]);
 
   const addAnnotation = (draft: AnnotationDraft) => {
+    dismissConfirmation();
     setNextAnnotationNumber((current) => {
       setAnnotations((existing) => [...existing, materializeAnnotation(draft, current)]);
       return current + 1;
@@ -81,6 +124,7 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
   };
 
   const clearAnnotations = () => {
+    dismissConfirmation();
     setAnnotations([]);
   };
 
@@ -95,6 +139,14 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
     }
   };
 
+  const modalTitle = pendingFinalAction === "submit" ? "Submit review?" : "Discard review?";
+  const modalConfirmLabel = pendingFinalAction === "submit" ? "Submit review" : "Discard review";
+  const modalConfirmAction = pendingFinalAction === "submit" ? submitReview : cancelReview;
+  const modalConfirmClassName =
+    pendingFinalAction === "submit"
+      ? "review-modal__confirm"
+      : "review-modal__confirm review-modal__confirm--danger";
+
   return (
     <div className="piannotator-shell">
       <ReviewBanner
@@ -102,29 +154,34 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
         subtitle={subtitle}
         annotationCount={annotations.length}
         canSubmit={canSubmit}
-        onSubmit={() => onSubmit(annotationsToDrafts(annotations))}
-        onCancel={onCancel}
+        onSubmit={openSubmitConfirmation}
+        onCancel={openCancelConfirmation}
+        onClear={clearAnnotations}
       />
-      <main className="review-body">
-        <section className="review-summary">
-          <div className="review-summary__item">
-            <span className="review-summary__label">Mode</span>
-            <span className="review-summary__value">{init.mode}</span>
-          </div>
-          <div className="review-summary__item">
-            <span className="review-summary__label">Annotations</span>
-            <span className="review-summary__value">{annotations.length}</span>
-          </div>
-          <div className="review-summary__item">
-            <span className="review-summary__label">Controls</span>
-            <div className="review-actions">
-              <button type="button" onClick={clearAnnotations} disabled={annotations.length === 0}>
-                Clear annotations
+      {pendingFinalAction !== null ? (
+        <div className="review-modal" role="presentation" onClick={dismissConfirmation}>
+          <div
+            className="review-modal__dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="review-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div id="review-modal-title" className="review-modal__title">
+              {modalTitle}
+            </div>
+            <div className="review-modal__actions">
+              <button type="button" onClick={dismissConfirmation}>
+                Cancel
+              </button>
+              <button type="button" className={modalConfirmClassName} onClick={modalConfirmAction}>
+                {modalConfirmLabel} <span className="review-modal__shortcut">⌘↩</span>
               </button>
             </div>
           </div>
-        </section>
-
+        </div>
+      ) : null}
+      <main className="review-body">
         {init.mode === "diff" ? (
           <ReviewView
             files={init.files}
