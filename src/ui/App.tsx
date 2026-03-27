@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DiffModeEnum } from "@git-diff-view/react";
 import { ReviewBanner } from "./ReviewBanner.js";
 import { ReviewView } from "./ReviewView.js";
@@ -37,6 +37,9 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
   const [overallComment, setOverallComment] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [command, setCommand] = useState(init.command ?? "");
+  const [editingCommand, setEditingCommand] = useState(init.command ?? "");
+  const editingCommandRef = useRef(editingCommand);
+  editingCommandRef.current = editingCommand;
   const [commandError, setCommandError] = useState<string | null>(null);
   const [commandRunning, setCommandRunning] = useState(false);
   const [files, setFiles] = useState(init.files);
@@ -96,6 +99,7 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
         setNextAnnotationNumber(1);
         setViewedFiles(new Set());
         setCollapsedFiles(new Set());
+        setCommand(editingCommandRef.current);
         setCommandRunning(false);
         setCommandError(null);
       } else if (msg.type === "rerun-error") {
@@ -200,7 +204,7 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
     setPendingRerun(false);
     setCommandError(null);
     setCommandRunning(true);
-    onRerunCommand(command);
+    onRerunCommand(editingCommand);
   };
 
   const handleRunCommand = () => {
@@ -244,7 +248,7 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
         totalFiles={init.mode === "diff" ? files.length : 0}
         viewedCount={viewedFiles.size}
         isCommandMode={isCommandMode}
-        onOpenSettings={() => setShowSettings(true)}
+        onOpenSettings={() => { setEditingCommand(command); setShowSettings(true); }}
         onSubmit={openSubmitConfirmation}
         onCancel={openCancelConfirmation}
         onClear={clearAnnotations}
@@ -298,8 +302,8 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
               <textarea
                 id="settings-command"
                 className="settings-modal__command"
-                value={command}
-                onChange={(e) => setCommand(e.target.value)}
+                value={editingCommand}
+                onChange={(e) => setEditingCommand(e.target.value)}
                 rows={2}
                 disabled={commandRunning}
               />
@@ -334,7 +338,7 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
                   type="button"
                   className="review-modal__confirm"
                   onClick={handleRunCommand}
-                  disabled={commandRunning || !command.trim()}
+                  disabled={commandRunning || !editingCommand.trim()}
                 >
                   {commandRunning ? "Running..." : "Run"}
                 </button>

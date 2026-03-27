@@ -90,17 +90,11 @@ export interface AnnotateState {
 }
 
 export interface AnnotateToolDetails extends AnnotateState {
-  action: "request" | "overview" | "detail";
+  action: "request" | "detail";
   cancelled?: boolean;
   review?: Review;
   annotation?: Annotation;
   error?: string;
-}
-
-export interface OverviewEntry {
-  annotationId: string;
-  reference: string;
-  summary: string;
 }
 
 export interface TextContextLine {

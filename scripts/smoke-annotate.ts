@@ -55,7 +55,7 @@ if (!annotateTool) {
 }
 
 assert.equal(annotateTool.parameters?.type, "object");
-assert.deepEqual(annotateTool.parameters?.properties?.action?.enum, ["request", "overview", "detail"]);
+assert.deepEqual(annotateTool.parameters?.properties?.action?.enum, ["request", "detail"]);
 
 const ctx = {
   sessionManager: {
@@ -80,17 +80,11 @@ assert.equal(textRequest.details.review.annotations[0].id, "A1");
 assert.equal(textRequest.details.review.annotations[0].kind, "text");
 assert.equal(textRequest.details.review.annotations[0].lineStart, 1);
 
-const textOverview = await annotateTool.execute(
-  "tool-call-2",
-  { action: "overview", reviewId: "review-1" },
-  undefined,
-  undefined,
-  ctx
-);
-assert.match(textOverview.content[0].text, /A1: L1/);
+// Verify request result includes the annotation overview
+assert.match(textRequest.content[0].text, /A1: L1/);
 
 const textDetail = await annotateTool.execute(
-  "tool-call-3",
+  "tool-call-2",
   { action: "detail", reviewId: "review-1", annotationId: "A1" },
   undefined,
   undefined,
@@ -100,7 +94,7 @@ assert.match(textDetail.content[0].text, /Annotation A1 in L1/);
 assert.match(textDetail.content[0].text, /Comment:/);
 
 const diffRequest = await annotateTool.execute(
-  "tool-call-4",
+  "tool-call-3",
   { action: "request", command: "emit-diff" },
   undefined,
   undefined,
@@ -114,17 +108,11 @@ assert.equal(diffRequest.details.review.annotations.length, 1);
 assert.equal(diffRequest.details.review.annotations[0].kind, "diff");
 assert.equal(diffRequest.details.review.annotations[0].filePath, "src/example.ts");
 
-const diffOverview = await annotateTool.execute(
-  "tool-call-5",
-  { action: "overview", reviewId: "review-2" },
-  undefined,
-  undefined,
-  ctx
-);
-assert.match(diffOverview.content[0].text, /src\/example.ts:/);
+// Verify request result includes diff annotation overview
+assert.match(diffRequest.content[0].text, /src\/example.ts:/);
 
 const diffDetail = await annotateTool.execute(
-  "tool-call-6",
+  "tool-call-4",
   { action: "detail", reviewId: "review-2", annotationId: "A1" },
   undefined,
   undefined,
@@ -134,7 +122,7 @@ assert.match(diffDetail.content[0].text, /Annotation A1 in src\/example.ts:/);
 assert.match(diffDetail.content[0].text, /Context \(@@ -1,4 \+1,5 @@\):/);
 
 const stderrRequest = await annotateTool.execute(
-  "tool-call-7",
+  "tool-call-5",
   { action: "request", command: "emit-stderr" },
   undefined,
   undefined,
@@ -143,7 +131,7 @@ const stderrRequest = await annotateTool.execute(
 assert.match(stderrRequest.details.review.source.content, /^\[stderr\]\nonly stderr$/);
 
 const invalidRequest = await annotateTool.execute(
-  "tool-call-8",
+  "tool-call-6",
   { action: "request", content: "first line", command: "emit-diff" },
   undefined,
   undefined,

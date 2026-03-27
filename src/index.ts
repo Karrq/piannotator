@@ -29,8 +29,8 @@ import {
 
 const AnnotateParamsSchema = Type.Object(
   {
-    action: StringEnum(["request", "overview", "detail"] as const, {
-      description: "Tool action: request starts a review, overview lists annotations, detail returns one annotation."
+    action: StringEnum(["request", "detail"] as const, {
+      description: "Tool action: request starts a review, detail returns one annotation."
     }),
     content: Type.Optional(
       Type.String({ description: "Raw text to review. Use with action=request instead of command." })
@@ -40,7 +40,7 @@ const AnnotateParamsSchema = Type.Object(
     ),
     title: Type.Optional(Type.String({ description: "Short review title. Use with action=request." })),
     reviewId: Type.Optional(
-      Type.String({ description: "Review ID returned by request. Use with action=overview or action=detail." })
+      Type.String({ description: "Review ID returned by request. Use with action=detail." })
     ),
     annotationId: Type.Optional(
       Type.String({ description: "Annotation ID within the review. Use with action=detail." })
@@ -61,11 +61,6 @@ type RequestCommandInput = {
   action: "request";
   command: string;
   title?: string;
-};
-
-type OverviewInput = {
-  action: "overview";
-  reviewId: string;
 };
 
 type DetailInput = {
@@ -116,11 +111,11 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "annotate",
     label: "Annotate",
-    description: "Request user annotations on text or command output, then retrieve them with overview or detail actions.",
-    promptSnippet: "Request user annotations with GitHub-style refs, then retrieve overview or detail without returning full source content.",
+    description: "Request user annotations on text or command output, then retrieve annotation details.",
+    promptSnippet: "Request user annotations with GitHub-style refs, then retrieve detail without returning full source content.",
     promptGuidelines: [
       "Use annotate.request to ask the user for annotations on text or command output.",
-      "Use annotate.overview before annotate.detail so only the needed annotation context enters the model context.",
+      "The request result includes an annotation overview. Use annotate.detail to get full context for a specific annotation.",
       "Prefer command mode when the content should stay out of the model context."
     ],
     parameters: AnnotateParamsSchema,
@@ -134,14 +129,6 @@ export default function (pi: ExtensionAPI) {
           }
 
           return handleRequest(request, signal);
-        }
-        case "overview": {
-          const overview = parseOverviewInput(params);
-          if ("error" in overview) {
-            return createResult("overview", overview.error, { error: overview.error });
-          }
-
-          return handleOverview(overview);
         }
         case "detail": {
           const detail = parseDetailInput(params);
@@ -202,17 +189,6 @@ export default function (pi: ExtensionAPI) {
     reviews.push(review);
 
     return createResult("request", formatRequestResult(review), { review });
-  }
-
-  function handleOverview(params: OverviewInput) {
-    const review = findReview(params.reviewId);
-    if (!review) {
-      return createResult("overview", `Review ${params.reviewId} was not found.`, {
-        error: `review not found: ${params.reviewId}`
-      });
-    }
-
-    return createResult("overview", formatOverview(review), { review });
   }
 
   function handleDetail(params: DetailInput) {
@@ -363,17 +339,6 @@ function parseRequestInput(params: AnnotateParams): RequestTextInput | RequestCo
   };
 }
 
-function parseOverviewInput(params: AnnotateParams): OverviewInput | { error: string } {
-  if (params.reviewId === undefined) {
-    return { error: "annotate.overview requires reviewId." };
-  }
-
-  return {
-    action: "overview",
-    reviewId: params.reviewId
-  };
-}
-
 function parseDetailInput(params: AnnotateParams): DetailInput | { error: string } {
   if (params.reviewId === undefined) {
     return { error: "annotate.detail requires reviewId." };
@@ -445,21 +410,6 @@ function formatRequestResult(review: Review): string {
   }
 
   return parts.join("\n");
-}
-
-function formatOverview(review: Review): string {
-  const count = review.annotations.length;
-  const header = `Review ${review.id} (${count} annotation${count === 1 ? "" : "s"}):`;
-
-  if (count === 0) {
-    return `${header}\n- No annotations submitted.`;
-  }
-
-  const entries = review.annotations.map((annotation) => {
-    return `- ${annotation.id}: ${formatAnnotationReference(annotation)} - \"${annotation.summary}\"`;
-  });
-
-  return [header, ...entries].join("\n");
 }
 
 function formatDetail(review: Review, annotation: Annotation): string {
@@ -544,13 +494,6 @@ function renderCall(args: AnnotateParams, theme: Theme) {
         0
       );
     }
-    case "overview":
-      return new Text(
-        theme.fg("toolTitle", theme.bold("annotate ")) +
-          theme.fg("muted", `overview ${args.reviewId ?? "(missing reviewId)"}`),
-        0,
-        0
-      );
     case "detail":
       return new Text(
         theme.fg("toolTitle", theme.bold("annotate ")) +
@@ -590,20 +533,6 @@ function renderResult(details: AnnotateToolDetails | undefined, content: Array<{
         0,
         0
       );
-    }
-
-    case "overview": {
-      const review = details.review;
-      if (!review) {
-        return new Text(theme.fg("dim", "No review found"), 0, 0);
-      }
-
-      const preview = review.annotations
-        .slice(0, 3)
-        .map((annotation) => `${annotation.id} ${formatAnnotationReference(annotation)}`)
-        .join("\n");
-      const suffix = review.annotations.length > 3 ? `\n${theme.fg("dim", `... ${review.annotations.length - 3} more`)}` : "";
-      return new Text(`${theme.fg("muted", `${review.id} overview`)}${preview ? `\n${preview}` : ""}${suffix}`, 0, 0);
     }
 
     case "detail": {
