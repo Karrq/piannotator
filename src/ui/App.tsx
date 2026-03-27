@@ -73,10 +73,6 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
   };
 
   const openSubmitConfirmation = () => {
-    if (!canSubmit) {
-      return;
-    }
-
     setPendingFinalAction("submit");
   };
 
@@ -114,7 +110,7 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
       if (event.key === "Enter" && event.metaKey) {
         event.preventDefault();
 
-        if (pendingFinalAction === "submit") {
+        if (pendingFinalAction === "submit" && canSubmit) {
           submitReview();
         } else if (pendingFinalAction === "cancel") {
           cancelReview();
@@ -241,7 +237,6 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
         title={init.title}
         subtitle={subtitle}
         annotationCount={annotations.length}
-        canSubmit={canSubmit}
         isDiffMode={init.mode === "diff"}
         diffMode={diffMode}
         onDiffModeChange={setDiffMode}
@@ -278,7 +273,7 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
               <button type="button" onClick={dismissConfirmation}>
                 Cancel
               </button>
-              <button type="button" className={modalConfirmClassName} onClick={modalConfirmAction}>
+              <button type="button" className={modalConfirmClassName} onClick={modalConfirmAction} disabled={pendingFinalAction === "submit" && !canSubmit}>
                 {modalConfirmLabel} <span className="review-modal__shortcut">⌘↩</span>
               </button>
             </div>

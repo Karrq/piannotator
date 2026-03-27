@@ -6,7 +6,6 @@ interface ReviewBannerProps {
   title: string;
   subtitle: string;
   annotationCount: number;
-  canSubmit: boolean;
   isDiffMode: boolean;
   diffMode: DiffModeEnum;
   onDiffModeChange: (mode: DiffModeEnum) => void;
@@ -23,7 +22,6 @@ export function ReviewBanner({
   title,
   subtitle,
   annotationCount,
-  canSubmit,
   isDiffMode,
   diffMode,
   onDiffModeChange,
@@ -74,7 +72,7 @@ export function ReviewBanner({
         <button type="button" onClick={onClear} disabled={annotationCount === 0}>
           Clear
         </button>
-        <button type="button" className="review-banner__submit" onClick={onSubmit} disabled={!canSubmit}>
+        <button type="button" className="review-banner__submit" onClick={onSubmit}>
           <span>Submit review</span>
           <span className="review-banner__badge">{annotationCount}</span>
         </button>
