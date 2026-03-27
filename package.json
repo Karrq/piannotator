@@ -1,0 +1,44 @@
+{
+  "name": "piannotator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node ./build/scripts/validate-diff-parser.js && node ./build/scripts/smoke-annotate.js && node ./build/esbuild.config.js",
+    "rebuild": "npm rebuild glimpseui && npm run build"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  },
+  "dependencies": {
+    "@git-diff-view/file": "^0.1.2",
+    "@git-diff-view/lowlight": "^0.1.2",
+    "@git-diff-view/react": "^0.1.2",
+    "glimpseui": "^0.3.7",
+    "react": "^19.2.0",
+    "react-arborist": "^3.4.3",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@mariozechner/pi-ai": "^0.59.0",
+    "@mariozechner/pi-coding-agent": "^0.59.0",
+    "@mariozechner/pi-tui": "^0.59.0",
+    "@sinclair/typebox": "^0.34.48",
+    "@types/node": "^24.5.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "esbuild": "^0.27.4",
+    "typescript": "^5.9.3"
+  }
+}
