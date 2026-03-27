@@ -1,4 +1,5 @@
 import { DiffModeEnum } from "@git-diff-view/react";
+import { ProgressCircle } from "./ProgressCircle.js";
 
 interface ReviewBannerProps {
   title: string;
@@ -38,6 +39,7 @@ export function ReviewBanner({
         </div>
       </div>
       <div className="review-banner__actions">
+        {isDiffMode && totalFiles > 0 && <ProgressCircle total={totalFiles} viewed={viewedCount} />}
         {isDiffMode && (
           <div className="diff-mode-toggle">
             <button

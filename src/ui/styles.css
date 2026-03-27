@@ -114,6 +114,10 @@ button:disabled {
   background: #2ea043;
 }
 
+.progress-circle {
+  flex: 0 0 auto;
+}
+
 .diff-mode-toggle {
   display: inline-flex;
   border: 1px solid #30363d;
