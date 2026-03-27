@@ -60,11 +60,6 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
 
   const totalAnnotations = useMemo(() => tabs.reduce((sum, tab) => sum + tab.annotations.length, 0), [tabs]);
 
-  const subtitle = useMemo(() => {
-    if (!activeTab) return "";
-    return `${activeTab.files.length} file${activeTab.files.length === 1 ? "" : "s"} loaded`;
-  }, [activeTab?.files.length]);
-
   const canSubmit = totalAnnotations > 0 || overallComment.trim().length > 0;
 
   function addTab(command: string, content: string, files: ReviewFile[]) {
@@ -260,8 +255,8 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
     <div className="piannotator-shell">
       <ReviewBanner
         title={init.title}
-        subtitle={subtitle}
-        annotationCount={totalAnnotations}
+        activeAnnotationCount={activeTab.annotations.length}
+        totalAnnotationCount={totalAnnotations}
         diffMode={diffMode}
         onDiffModeChange={setDiffMode}
         totalFiles={activeTab.files.length}
@@ -332,39 +327,19 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
             {commandError && (
               <div className="settings-modal__error">{commandError}</div>
             )}
-            {tabs.length > 1 && (
-              <div className="settings-modal__field">
-                <label className="settings-modal__label">Versions</label>
-                <div className="settings-modal__versions">
-                  {tabs.map((tab, i) => (
-                    <div key={tab.id} className={`settings-modal__version${i === activeTabIndex ? " settings-modal__version--active" : ""}`}>
-                      <span className="settings-modal__version-label">
-                        <span className="settings-modal__version-num">{i + 1}</span>
-                        <span className="settings-modal__version-cmd" title={tab.command || "(no command)"}>
-                          {tab.command || "(no command)"}
-                        </span>
-                        {tab.annotations.length > 0 && (
-                          <span className="settings-modal__version-badge">{tab.annotations.length}</span>
-                        )}
-                      </span>
-                      <button
-                        type="button"
-                        className="settings-modal__version-delete"
-                        onClick={() => deleteTab(i)}
-                        aria-label={`Delete version ${i + 1}`}
-                        title="Delete version"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
             <div className="review-modal__actions">
               <button type="button" onClick={() => { setShowSettings(false); setCommandError(null); setPendingRerun(false); }}>
                 Close
               </button>
+              {tabs.length > 1 && (
+                <button
+                  type="button"
+                  className="review-modal__confirm review-modal__confirm--danger"
+                  onClick={() => { deleteTab(activeTabIndex); setShowSettings(false); }}
+                >
+                  Delete version
+                </button>
+              )}
               <button
                 type="button"
                 className="review-modal__confirm"

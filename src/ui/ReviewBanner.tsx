@@ -10,8 +10,10 @@ interface TabInfo {
 
 interface ReviewBannerProps {
   title: string;
-  subtitle: string;
-  annotationCount: number;
+  /** Annotation count for the active tab only */
+  activeAnnotationCount: number;
+  /** Total annotations across all tabs (for submit badge) */
+  totalAnnotationCount: number;
   diffMode: DiffModeEnum;
   onDiffModeChange: (mode: DiffModeEnum) => void;
   totalFiles: number;
@@ -27,8 +29,8 @@ interface ReviewBannerProps {
 
 export function ReviewBanner({
   title,
-  subtitle,
-  annotationCount,
+  activeAnnotationCount,
+  totalAnnotationCount,
   diffMode,
   onDiffModeChange,
   totalFiles,
@@ -61,7 +63,7 @@ export function ReviewBanner({
             <div className="review-banner__tab-label">
               <div className="review-banner__title" title={displayTitle}>{displayTitle}</div>
               <div className="review-banner__subtitle">
-                {activeTabIndex + 1}/{tabs.length} · {subtitle} · {annotationCount} annotation{annotationCount === 1 ? "" : "s"}
+                {activeTabIndex + 1}/{tabs.length} · {activeAnnotationCount} annotation{activeAnnotationCount === 1 ? "" : "s"}
               </div>
             </div>
             <button
@@ -78,7 +80,7 @@ export function ReviewBanner({
           <>
             <div className="review-banner__title">{displayTitle}</div>
             <div className="review-banner__subtitle">
-              {subtitle} · {annotationCount} annotation{annotationCount === 1 ? "" : "s"}
+              {activeAnnotationCount} annotation{activeAnnotationCount === 1 ? "" : "s"}
             </div>
           </>
         )}
@@ -107,12 +109,12 @@ export function ReviewBanner({
         <button type="button" onClick={onCancel}>
           Cancel
         </button>
-        <button type="button" onClick={onClear} disabled={annotationCount === 0}>
+        <button type="button" onClick={onClear} disabled={activeAnnotationCount === 0}>
           Clear
         </button>
         <button type="button" className="review-banner__submit" onClick={onSubmit}>
           <span>Submit review</span>
-          <span className="review-banner__badge">{annotationCount}</span>
+          <span className="review-banner__badge">{totalAnnotationCount}</span>
         </button>
       </div>
     </header>
