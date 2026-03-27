@@ -1,5 +1,5 @@
 import { findFirstChangedLine } from "./diff-parser.js";
-import type { ReviewClient } from "./review-client.js";
+import type { ReviewClient, ReviewClientOptions } from "./review-client.js";
 import type {
   DiffAnnotationDraft,
   DiffReviewClientRequest,
@@ -12,7 +12,7 @@ import type {
 const STUB_CANCEL_TOKEN = "[[stub-cancel]]";
 
 export class StubReviewClient implements ReviewClient {
-  async requestReview(input: ReviewClientRequest): Promise<ReviewClientResult | null> {
+  async requestReview(input: ReviewClientRequest, _options?: ReviewClientOptions): Promise<ReviewClientResult | null> {
     if (input.content.includes(STUB_CANCEL_TOKEN)) {
       return null;
     }

@@ -80,6 +80,7 @@ export interface Review {
   files: ReviewFile[];
   annotations: Annotation[];
   overallComment?: string;
+  finalCommand?: string;
   createdAt: string;
 }
 
@@ -133,6 +134,7 @@ export type ReviewClientRequest = TextReviewClientRequest | DiffReviewClientRequ
 export interface ReviewClientResult {
   annotations: AnnotationDraft[];
   overallComment?: string;
+  command?: string;
 }
 
 export interface ReviewBridgeInit {

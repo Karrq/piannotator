@@ -193,6 +193,12 @@ export default function (pi: ExtensionAPI) {
     }
 
     const review = createReview(source, mode, files, clientResult.annotations, clientResult.overallComment);
+
+    // Store finalCommand only if the user changed the command
+    if (clientResult.command && source.kind === "command" && clientResult.command !== source.command) {
+      review.finalCommand = clientResult.command;
+    }
+
     reviews.push(review);
 
     return createResult("request", formatRequestResult(review), { review });
@@ -416,6 +422,12 @@ function formatRequestResult(review: Review): string {
   const count = review.annotations.length;
   const parts: string[] = [];
   parts.push(`Review ${review.id} (${count} annotation${count === 1 ? "" : "s"}):`);
+
+  if (review.finalCommand) {
+    parts.push("");
+    parts.push("Note: The review command was changed by the user.");
+    parts.push(`Final command: ${review.finalCommand}`);
+  }
 
   if (review.overallComment) {
     parts.push("");

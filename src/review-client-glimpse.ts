@@ -60,7 +60,8 @@ export class GlimpseReviewClient implements ReviewClient {
 
     return {
       annotations: message.annotations,
-      overallComment: message.overallComment
+      overallComment: message.overallComment,
+      command: message.command
     };
   }
 }
