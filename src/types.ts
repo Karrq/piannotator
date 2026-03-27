@@ -132,6 +132,25 @@ export interface ReviewClientResult {
   annotations: AnnotationDraft[];
 }
 
+export interface ReviewBridgeInit {
+  title: string;
+  mode: ReviewMode;
+  content: string;
+  files: ReviewFile[];
+  annotations: AnnotationDraft[];
+}
+
+export interface ReviewBridgeSubmitMessage {
+  type: "submit";
+  annotations: AnnotationDraft[];
+}
+
+export interface ReviewBridgeCancelMessage {
+  type: "cancel";
+}
+
+export type ReviewBridgeMessage = ReviewBridgeSubmitMessage | ReviewBridgeCancelMessage;
+
 export function truncateAnnotationSummary(comment: string, limit = ANNOTATION_SUMMARY_LIMIT): string {
   const normalized = comment.replace(/\s+/g, " ").trim();
   if (normalized.length <= limit) {
