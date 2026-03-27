@@ -171,10 +171,11 @@ export default function (pi: ExtensionAPI) {
     const source = await loadReviewSource(params, signal);
     const files = isUnifiedDiff(source.content) ? parseDiff(source.content) : [];
     const mode: ReviewMode = files.length > 0 ? "diff" : "text";
+    const sourceCommand = source.kind === "command" ? source.command : undefined;
     const clientRequest =
       mode === "diff"
-        ? ({ title: source.title, mode, content: source.content, files } satisfies DiffReviewClientRequest)
-        : ({ title: source.title, mode, content: source.content, files: [] } satisfies TextReviewClientRequest);
+        ? ({ title: source.title, mode, content: source.content, files, command: sourceCommand } satisfies DiffReviewClientRequest)
+        : ({ title: source.title, mode, content: source.content, files: [], command: sourceCommand } satisfies TextReviewClientRequest);
 
     const clientResult = await reviewClient.requestReview(clientRequest, {
       onRerunCommand: source.kind === "command"

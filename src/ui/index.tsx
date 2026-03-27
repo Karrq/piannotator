@@ -2,13 +2,18 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.js";
 import "./styles.css";
-import type { ReviewBridgeCancelMessage, ReviewBridgeInit, ReviewBridgeSubmitMessage } from "../types.js";
+import type {
+  ReviewBridgeExtensionMessage,
+  ReviewBridgeInit,
+  ReviewBridgeMessage
+} from "../types.js";
 
 declare global {
   interface Window {
     __PIANNOTATOR_INIT__?: ReviewBridgeInit;
+    __PIANNOTATOR_RECEIVE__?: (message: ReviewBridgeExtensionMessage) => void;
     glimpse?: {
-      send: (message: ReviewBridgeSubmitMessage | ReviewBridgeCancelMessage) => void;
+      send: (message: ReviewBridgeMessage) => void;
       close?: () => void;
     };
   }
@@ -22,13 +27,22 @@ if (!rootElement) {
 const root = createRoot(rootElement);
 const init = window.__PIANNOTATOR_INIT__ ?? createFallbackInit();
 
+// Listeners registered by App for extension-to-UI messages
+const extensionMessageListeners: Array<(msg: ReviewBridgeExtensionMessage) => void> = [];
+
+window.__PIANNOTATOR_RECEIVE__ = (message: ReviewBridgeExtensionMessage) => {
+  for (const listener of extensionMessageListeners) {
+    listener(message);
+  }
+};
+
 // Glimpse's WKWebView has been flaky with JSX in this entry module.
 // Using createElement here keeps the bundled entry stable.
 root.render(
   React.createElement(App, {
     init,
-    onSubmit: (annotations, overallComment) => {
-      window.glimpse?.send({ type: "submit", annotations, overallComment });
+    onSubmit: (annotations, overallComment, command) => {
+      window.glimpse?.send({ type: "submit", annotations, overallComment, command });
     },
     onCancel: () => {
       if (window.glimpse?.send) {
@@ -37,6 +51,18 @@ root.render(
       }
 
       window.glimpse?.close?.();
+    },
+    onRerunCommand: (command: string) => {
+      window.glimpse?.send({ type: "rerun", command });
+    },
+    onExtensionMessage: (listener) => {
+      extensionMessageListeners.push(listener);
+      return () => {
+        const index = extensionMessageListeners.indexOf(listener);
+        if (index >= 0) {
+          extensionMessageListeners.splice(index, 1);
+        }
+      };
     }
   })
 );

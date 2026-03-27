@@ -43,7 +43,8 @@ export class GlimpseReviewClient implements ReviewClient {
       mode: input.mode,
       content: input.content,
       files: input.files,
-      annotations: []
+      annotations: [],
+      command: input.command
     });
 
     const message = this.promptImpl

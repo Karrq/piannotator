@@ -186,6 +186,51 @@ button:disabled {
   margin-bottom: 1rem;
 }
 
+.review-modal__dialog--settings {
+  width: min(100%, 540px);
+}
+
+.review-banner__settings {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.55rem;
+}
+
+.settings-modal__field {
+  margin-bottom: 1rem;
+}
+
+.settings-modal__label {
+  display: block;
+  margin-bottom: 0.4rem;
+  color: #8b949e;
+  font-size: 0.85rem;
+}
+
+.settings-modal__command {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+.settings-modal__error {
+  margin-bottom: 1rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 6px;
+  background: rgba(248, 81, 73, 0.12);
+  color: #f85149;
+  font-size: 0.85rem;
+}
+
+.settings-modal__warning {
+  margin-bottom: 1rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 6px;
+  background: rgba(210, 153, 34, 0.12);
+  color: #d29922;
+  font-size: 0.85rem;
+}
+
 .review-modal__comment {
   margin-bottom: 1rem;
   min-height: 4rem;

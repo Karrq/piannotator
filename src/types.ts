@@ -115,6 +115,7 @@ export interface DiffContextLine extends ReviewFileLine {
 interface ReviewClientRequestBase {
   title: string;
   content: string;
+  command?: string;
 }
 
 export interface TextReviewClientRequest extends ReviewClientRequestBase {
@@ -140,12 +141,14 @@ export interface ReviewBridgeInit {
   content: string;
   files: ReviewFile[];
   annotations: AnnotationDraft[];
+  command?: string;
 }
 
 export interface ReviewBridgeSubmitMessage {
   type: "submit";
   annotations: AnnotationDraft[];
   overallComment?: string;
+  command?: string;
 }
 
 export interface ReviewBridgeCancelMessage {

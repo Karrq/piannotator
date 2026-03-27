@@ -10,19 +10,22 @@ import {
   type Annotation,
   type AnnotationDraft,
   type DiffAnnotationDraft,
+  type ReviewBridgeExtensionMessage,
   type ReviewBridgeInit,
   type TextAnnotationDraft
 } from "../types.js";
 
 interface AppProps {
   init: ReviewBridgeInit;
-  onSubmit: (annotations: AnnotationDraft[], overallComment?: string) => void;
+  onSubmit: (annotations: AnnotationDraft[], overallComment?: string, command?: string) => void;
   onCancel: () => void;
+  onRerunCommand?: (command: string) => void;
+  onExtensionMessage?: (listener: (msg: ReviewBridgeExtensionMessage) => void) => () => void;
 }
 
 type PendingFinalAction = "submit" | "cancel" | null;
 
-export function App({ init, onSubmit, onCancel }: AppProps) {
+export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessage }: AppProps) {
   const initialState = useMemo(() => materializeAnnotations(init.annotations), [init.annotations]);
   const [annotations, setAnnotations] = useState<Annotation[]>(initialState.annotations);
   const [nextAnnotationNumber, setNextAnnotationNumber] = useState(initialState.nextAnnotationNumber);
@@ -32,15 +35,21 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
   const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
   const [viewedFiles, setViewedFiles] = useState<Set<string>>(new Set());
   const [overallComment, setOverallComment] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
+  const [command, setCommand] = useState(init.command ?? "");
+  const [commandError, setCommandError] = useState<string | null>(null);
+  const [commandRunning, setCommandRunning] = useState(false);
+  const [files, setFiles] = useState(init.files);
+  const isCommandMode = !!init.command;
 
   const subtitle = useMemo(() => {
     if (init.mode === "diff") {
-      return `${init.files.length} file${init.files.length === 1 ? "" : "s"} loaded`;
+      return `${files.length} file${files.length === 1 ? "" : "s"} loaded`;
     }
 
     const lineCount = init.content.split(/\r?\n/).length;
     return `${lineCount} line${lineCount === 1 ? "" : "s"} loaded`;
-  }, [init.content, init.files.length, init.mode]);
+  }, [init.content, files.length, init.mode]);
 
   const canSubmit = annotations.length > 0 || overallComment.trim().length > 0;
 
@@ -51,7 +60,8 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
   const submitReview = () => {
     dismissConfirmation();
     const comment = overallComment.trim() || undefined;
-    onSubmit(annotationsToDrafts(annotations), comment);
+    const finalCommand = isCommandMode && command !== init.command ? command : undefined;
+    onSubmit(annotationsToDrafts(annotations), comment, finalCommand);
   };
 
   const cancelReview = () => {
@@ -76,6 +86,25 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
     setNextAnnotationNumber(initialState.nextAnnotationNumber);
   }, [initialState]);
 
+  // Listen for extension-to-UI messages (update/rerun-error)
+  useEffect(() => {
+    if (!onExtensionMessage) return;
+    return onExtensionMessage((msg) => {
+      if (msg.type === "update") {
+        setFiles(msg.files);
+        setAnnotations([]);
+        setNextAnnotationNumber(1);
+        setViewedFiles(new Set());
+        setCollapsedFiles(new Set());
+        setCommandRunning(false);
+        setCommandError(null);
+      } else if (msg.type === "rerun-error") {
+        setCommandRunning(false);
+        setCommandError(msg.error);
+      }
+    });
+  }, [onExtensionMessage]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Enter" && event.metaKey) {
@@ -94,7 +123,11 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
       if (event.key === "Escape") {
         event.preventDefault();
 
-        if (pendingFinalAction !== null) {
+        if (showSettings) {
+          setShowSettings(false);
+          setCommandError(null);
+          setPendingRerun(false);
+        } else if (pendingFinalAction !== null) {
           dismissConfirmation();
         } else {
           openCancelConfirmation();
@@ -160,6 +193,25 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
     });
   };
 
+  const [pendingRerun, setPendingRerun] = useState(false);
+
+  const executeRerun = () => {
+    if (!onRerunCommand || commandRunning) return;
+    setPendingRerun(false);
+    setCommandError(null);
+    setCommandRunning(true);
+    onRerunCommand(command);
+  };
+
+  const handleRunCommand = () => {
+    if (!onRerunCommand || commandRunning) return;
+    if (annotations.length > 0) {
+      setPendingRerun(true);
+    } else {
+      executeRerun();
+    }
+  };
+
   const annotationActions = {
     addDiffAnnotation: (draft: DiffAnnotationDraft) => addAnnotation(draft),
     addTextAnnotation: (draft: TextAnnotationDraft) => addAnnotation(draft),
@@ -189,8 +241,10 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
         isDiffMode={init.mode === "diff"}
         diffMode={diffMode}
         onDiffModeChange={setDiffMode}
-        totalFiles={init.mode === "diff" ? init.files.length : 0}
+        totalFiles={init.mode === "diff" ? files.length : 0}
         viewedCount={viewedFiles.size}
+        isCommandMode={isCommandMode}
+        onOpenSettings={() => setShowSettings(true)}
         onSubmit={openSubmitConfirmation}
         onCancel={openCancelConfirmation}
         onClear={clearAnnotations}
@@ -227,10 +281,72 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
           </div>
         </div>
       ) : null}
+      {showSettings && (
+        <div className="review-modal" role="presentation" onClick={() => { setShowSettings(false); setCommandError(null); }}>
+          <div
+            className="review-modal__dialog review-modal__dialog--settings"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div id="settings-modal-title" className="review-modal__title">
+              Settings
+            </div>
+            <div className="settings-modal__field">
+              <label className="settings-modal__label" htmlFor="settings-command">Command</label>
+              <textarea
+                id="settings-command"
+                className="settings-modal__command"
+                value={command}
+                onChange={(e) => setCommand(e.target.value)}
+                rows={2}
+                disabled={commandRunning}
+              />
+            </div>
+            {commandError && (
+              <div className="settings-modal__error">{commandError}</div>
+            )}
+            {pendingRerun && (
+              <div className="settings-modal__warning">
+                Changing the command will reset all {annotations.length} annotation{annotations.length === 1 ? "" : "s"}. Continue?
+              </div>
+            )}
+            <div className="review-modal__actions">
+              <button type="button" onClick={() => { setShowSettings(false); setCommandError(null); setPendingRerun(false); }}>
+                Close
+              </button>
+              {pendingRerun ? (
+                <>
+                  <button type="button" onClick={() => setPendingRerun(false)}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="review-modal__confirm review-modal__confirm--danger"
+                    onClick={executeRerun}
+                  >
+                    Reset and run
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="review-modal__confirm"
+                  onClick={handleRunCommand}
+                  disabled={commandRunning || !command.trim()}
+                >
+                  {commandRunning ? "Running..." : "Run"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <main className="review-body">
         {init.mode === "diff" ? (
           <ReviewView
-            files={init.files}
+            files={files}
             annotations={annotations}
             diffMode={diffMode}
             collapsedFiles={collapsedFiles}
