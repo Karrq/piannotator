@@ -316,3 +316,16 @@ function matchesLineRange(
 
   return lineNumber >= rangeStart && lineNumber <= rangeEnd;
 }
+
+export function textToDiff(content: string, filename = "review-content"): string {
+  const lines = content.split(/\r?\n/);
+  const header = [
+    `diff --git a/dev/null b/${filename}`,
+    "new file mode 100644",
+    "--- /dev/null",
+    `+++ b/${filename}`,
+    `@@ -0,0 +1,${lines.length} @@`
+  ];
+  const body = lines.map((line) => `+${line}`);
+  return [...header, ...body].join("\n");
+}

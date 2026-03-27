@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { findFirstChangedLine, parseDiff } from "../src/diff-parser.js";
+import { findFirstChangedLine, parseDiff, textToDiff } from "../src/diff-parser.js";
 
 const singleFileDiff = `diff --git a/src/example.ts b/src/example.ts
 index 1111111..2222222 100644
@@ -70,5 +70,33 @@ assert.equal(files[2].displayPath, "src/deleted.ts");
 assert.equal(files[2].additions, 0);
 assert.equal(files[2].deletions, 2);
 assert.deepEqual(findFirstChangedLine(files[2]), { lineNumber: 1, lineSource: "old" });
+
+// textToDiff validation
+const textContent = "line one\nline two\nline three";
+const syntheticDiff = textToDiff(textContent, "test-file.txt");
+const syntheticFiles = parseDiff(syntheticDiff);
+assert.equal(syntheticFiles.length, 1, "textToDiff should produce one file");
+assert.equal(syntheticFiles[0].changeType, "added");
+assert.equal(syntheticFiles[0].oldPath, "/dev/null");
+assert.equal(syntheticFiles[0].newPath, "test-file.txt");
+assert.equal(syntheticFiles[0].displayPath, "test-file.txt");
+assert.equal(syntheticFiles[0].additions, 3);
+assert.equal(syntheticFiles[0].deletions, 0);
+assert.equal(syntheticFiles[0].hunks.length, 1);
+assert.equal(syntheticFiles[0].hunks[0].lines.length, 3);
+assert.equal(syntheticFiles[0].hunks[0].lines[0].text, "line one");
+assert.equal(syntheticFiles[0].hunks[0].lines[0].kind, "add");
+assert.equal(syntheticFiles[0].hunks[0].lines[0].newLineNumber, 1);
+
+// textToDiff with default filename
+const defaultDiff = textToDiff("hello");
+const defaultFiles = parseDiff(defaultDiff);
+assert.equal(defaultFiles[0].displayPath, "review-content");
+
+// textToDiff with empty content
+const emptyDiff = textToDiff("");
+const emptyFiles = parseDiff(emptyDiff);
+assert.equal(emptyFiles.length, 1);
+assert.equal(emptyFiles[0].additions, 1, "empty content produces one empty add line");
 
 console.log("Diff parser validation passed.");
