@@ -58,7 +58,8 @@ export class GlimpseReviewClient implements ReviewClient {
     }
 
     return {
-      annotations: message.annotations
+      annotations: message.annotations,
+      overallComment: message.overallComment
     };
   }
 }

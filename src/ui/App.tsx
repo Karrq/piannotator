@@ -16,7 +16,7 @@ import {
 
 interface AppProps {
   init: ReviewBridgeInit;
-  onSubmit: (annotations: AnnotationDraft[]) => void;
+  onSubmit: (annotations: AnnotationDraft[], overallComment?: string) => void;
   onCancel: () => void;
 }
 
@@ -31,6 +31,7 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
   const [diffMode, setDiffMode] = useState(DiffModeEnum.Unified);
   const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
   const [viewedFiles, setViewedFiles] = useState<Set<string>>(new Set());
+  const [overallComment, setOverallComment] = useState("");
 
   const subtitle = useMemo(() => {
     if (init.mode === "diff") {
@@ -41,7 +42,7 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
     return `${lineCount} line${lineCount === 1 ? "" : "s"} loaded`;
   }, [init.content, init.files.length, init.mode]);
 
-  const canSubmit = annotations.length > 0;
+  const canSubmit = annotations.length > 0 || overallComment.trim().length > 0;
 
   const dismissConfirmation = () => {
     setPendingFinalAction(null);
@@ -49,7 +50,8 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
 
   const submitReview = () => {
     dismissConfirmation();
-    onSubmit(annotationsToDrafts(annotations));
+    const comment = overallComment.trim() || undefined;
+    onSubmit(annotationsToDrafts(annotations), comment);
   };
 
   const cancelReview = () => {
@@ -205,6 +207,15 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
             <div id="review-modal-title" className="review-modal__title">
               {modalTitle}
             </div>
+            {pendingFinalAction === "submit" && (
+              <textarea
+                className="review-modal__comment"
+                placeholder="Optional overall review comment..."
+                value={overallComment}
+                onChange={(e) => setOverallComment(e.target.value)}
+                rows={3}
+              />
+            )}
             <div className="review-modal__actions">
               <button type="button" onClick={dismissConfirmation}>
                 Cancel

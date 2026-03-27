@@ -27,8 +27,8 @@ const init = window.__PIANNOTATOR_INIT__ ?? createFallbackInit();
 root.render(
   React.createElement(App, {
     init,
-    onSubmit: (annotations) => {
-      window.glimpse?.send({ type: "submit", annotations });
+    onSubmit: (annotations, overallComment) => {
+      window.glimpse?.send({ type: "submit", annotations, overallComment });
     },
     onCancel: () => {
       if (window.glimpse?.send) {

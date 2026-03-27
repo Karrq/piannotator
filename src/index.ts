@@ -182,10 +182,10 @@ export default function (pi: ExtensionAPI) {
       return createResult("request", "User cancelled the review.", { cancelled: true });
     }
 
-    const review = createReview(source, mode, files, clientResult.annotations);
+    const review = createReview(source, mode, files, clientResult.annotations, clientResult.overallComment);
     reviews.push(review);
 
-    return createResult("request", formatOverview(review), { review });
+    return createResult("request", formatRequestResult(review), { review });
   }
 
   function handleOverview(params: OverviewInput) {
@@ -241,7 +241,7 @@ export default function (pi: ExtensionAPI) {
     };
   }
 
-  function createReview(source: ReviewSource, mode: ReviewMode, files: ReviewFile[], drafts: AnnotationDraft[]): Review {
+  function createReview(source: ReviewSource, mode: ReviewMode, files: ReviewFile[], drafts: AnnotationDraft[], overallComment?: string): Review {
     const reviewId = `review-${nextReviewId++}`;
     const annotations =
       mode === "diff"
@@ -255,6 +255,7 @@ export default function (pi: ExtensionAPI) {
       source,
       files,
       annotations,
+      overallComment,
       createdAt: new Date().toISOString()
     };
   }
@@ -399,6 +400,29 @@ function deriveTextTitle(content: string): string {
   }
 
   return firstLine.length <= 60 ? firstLine : `${firstLine.slice(0, 57).trimEnd()}...`;
+}
+
+function formatRequestResult(review: Review): string {
+  const count = review.annotations.length;
+  const parts: string[] = [];
+  parts.push(`Review ${review.id} (${count} annotation${count === 1 ? "" : "s"}):`);
+
+  if (review.overallComment) {
+    parts.push("");
+    parts.push("Overall comment:");
+    parts.push(review.overallComment);
+    parts.push("");
+  }
+
+  if (count === 0 && !review.overallComment) {
+    parts.push("- No annotations submitted.");
+  } else {
+    for (const annotation of review.annotations) {
+      parts.push(`- ${annotation.id}: ${formatAnnotationReference(annotation)} - \"${annotation.summary}\"`);
+    }
+  }
+
+  return parts.join("\n");
 }
 
 function formatOverview(review: Review): string {

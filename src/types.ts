@@ -79,6 +79,7 @@ export interface Review {
   source: ReviewSource;
   files: ReviewFile[];
   annotations: Annotation[];
+  overallComment?: string;
   createdAt: string;
 }
 
@@ -130,6 +131,7 @@ export type ReviewClientRequest = TextReviewClientRequest | DiffReviewClientRequ
 
 export interface ReviewClientResult {
   annotations: AnnotationDraft[];
+  overallComment?: string;
 }
 
 export interface ReviewBridgeInit {
@@ -143,6 +145,7 @@ export interface ReviewBridgeInit {
 export interface ReviewBridgeSubmitMessage {
   type: "submit";
   annotations: AnnotationDraft[];
+  overallComment?: string;
 }
 
 export interface ReviewBridgeCancelMessage {

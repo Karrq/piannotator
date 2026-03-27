@@ -186,6 +186,11 @@ button:disabled {
   margin-bottom: 1rem;
 }
 
+.review-modal__comment {
+  margin-bottom: 1rem;
+  min-height: 4rem;
+}
+
 .review-modal__actions {
   display: flex;
   justify-content: flex-end;
