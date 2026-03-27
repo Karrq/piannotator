@@ -1,16 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ReviewBanner } from "./ReviewBanner.js";
 import { ReviewView } from "./ReviewView.js";
 import { TextReview } from "./TextReview.js";
-import { findFirstChangedLine } from "../diff-parser.js";
+import { annotationsToDrafts, materializeAnnotation, materializeAnnotations, removeAnnotation, updateAnnotationComment } from "./annotation-state.js";
 import {
   formatAnnotationReference,
   truncateAnnotationSummary,
   type Annotation,
   type AnnotationDraft,
-  type DiffAnnotation,
+  type DiffAnnotationDraft,
   type ReviewBridgeInit,
-  type TextAnnotation
+  type TextAnnotationDraft
 } from "../types.js";
 
 interface AppProps {
@@ -20,7 +20,10 @@ interface AppProps {
 }
 
 export function App({ init, onSubmit, onCancel }: AppProps) {
-  const [annotations, setAnnotations] = useState<Annotation[]>(() => materializeAnnotations(init.annotations));
+  const initialState = useMemo(() => materializeAnnotations(init.annotations), [init.annotations]);
+  const [annotations, setAnnotations] = useState<Annotation[]>(initialState.annotations);
+  const [nextAnnotationNumber, setNextAnnotationNumber] = useState(initialState.nextAnnotationNumber);
+  const nextAnnotationNumberRef = useRef(initialState.nextAnnotationNumber);
 
   const subtitle = useMemo(() => {
     if (init.mode === "diff") {
@@ -32,6 +35,16 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
   }, [init.content, init.files.length, init.mode]);
 
   const canSubmit = annotations.length > 0;
+
+  useEffect(() => {
+    setAnnotations(initialState.annotations);
+    setNextAnnotationNumber(initialState.nextAnnotationNumber);
+    nextAnnotationNumberRef.current = initialState.nextAnnotationNumber;
+  }, [initialState]);
+
+  useEffect(() => {
+    nextAnnotationNumberRef.current = nextAnnotationNumber;
+  }, [nextAnnotationNumber]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -51,18 +64,29 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [annotations, canSubmit, onCancel, onSubmit]);
 
-  const addPlaceholderAnnotation = () => {
-    const nextId = `A${annotations.length + 1}`;
-    const next = init.mode === "diff" ? createPlaceholderDiffAnnotation(nextId, annotations.length, init) : createPlaceholderTextAnnotation(nextId, annotations.length, init);
-    if (!next) {
-      return;
-    }
-
-    setAnnotations((current) => [...current, next]);
+  const addAnnotation = (draft: AnnotationDraft) => {
+    const annotationNumber = nextAnnotationNumberRef.current;
+    setAnnotations((current) => [...current, materializeAnnotation(draft, annotationNumber)]);
+    setNextAnnotationNumber(annotationNumber + 1);
+    nextAnnotationNumberRef.current = annotationNumber + 1;
   };
 
   const clearAnnotations = () => {
     setAnnotations([]);
+  };
+
+  const addPlaceholderTextAnnotation = () => {
+    addAnnotation(createPlaceholderTextAnnotation(annotations.length, init));
+  };
+
+  const annotationActions = {
+    addDiffAnnotation: (draft: DiffAnnotationDraft) => addAnnotation(draft),
+    updateComment: (annotationId: string, comment: string) => {
+      setAnnotations((current) => updateAnnotationComment(current, annotationId, comment));
+    },
+    deleteAnnotation: (annotationId: string) => {
+      setAnnotations((current) => removeAnnotation(current, annotationId));
+    }
   };
 
   return (
@@ -86,11 +110,13 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
             <span className="review-summary__value">{annotations.length}</span>
           </div>
           <div className="review-summary__item">
-            <span className="review-summary__label">Placeholder controls</span>
+            <span className="review-summary__label">Controls</span>
             <div className="review-actions">
-              <button type="button" onClick={addPlaceholderAnnotation}>
-                Add placeholder annotation
-              </button>
+              {init.mode === "text" ? (
+                <button type="button" onClick={addPlaceholderTextAnnotation}>
+                  Add placeholder annotation
+                </button>
+              ) : null}
               <button type="button" onClick={clearAnnotations} disabled={annotations.length === 0}>
                 Clear annotations
               </button>
@@ -99,7 +125,7 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
         </section>
 
         {init.mode === "diff" ? (
-          <ReviewView files={init.files} annotations={annotations} />
+          <ReviewView files={init.files} annotations={annotations} {...annotationActions} />
         ) : (
           <TextReview content={init.content} annotations={annotations} />
         )}
@@ -125,7 +151,11 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
                 ))}
               </div>
             ) : (
-              <p className="empty-state">Add a placeholder annotation to exercise submit and cancel while the real review UI is under construction.</p>
+              <p className="empty-state">
+                {init.mode === "diff"
+                  ? "Use the inline plus button to add single-line diff comments."
+                  : "Add a placeholder annotation to exercise submit and cancel while the real text review UI is under construction."}
+              </p>
             )}
           </div>
         </section>
@@ -134,31 +164,7 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
   );
 }
 
-function materializeAnnotations(drafts: AnnotationDraft[]): Annotation[] {
-  return drafts.map((draft, index) => {
-    if (draft.kind === "diff") {
-      const annotation: DiffAnnotation = {
-        ...draft,
-        id: `A${index + 1}`,
-        summary: truncateAnnotationSummary(draft.comment)
-      };
-      return annotation;
-    }
-
-    const annotation: TextAnnotation = {
-      ...draft,
-      id: `A${index + 1}`,
-      summary: truncateAnnotationSummary(draft.comment)
-    };
-    return annotation;
-  });
-}
-
-function annotationsToDrafts(annotations: Annotation[]): AnnotationDraft[] {
-  return annotations.map(({ id: _id, summary: _summary, ...draft }) => draft);
-}
-
-function createPlaceholderTextAnnotation(id: string, index: number, init: ReviewBridgeInit): TextAnnotation | null {
+function createPlaceholderTextAnnotation(index: number, init: ReviewBridgeInit): TextAnnotationDraft {
   const lines = init.content.split(/\r?\n/);
   const firstContentLine = lines.findIndex((line) => line.trim().length > 0);
   const lineStart = firstContentLine === -1 ? 1 : firstContentLine + 1 + index;
@@ -167,41 +173,8 @@ function createPlaceholderTextAnnotation(id: string, index: number, init: Review
 
   return {
     kind: "text",
-    id,
     lineSource: "text",
     lineStart: clampedLine,
-    comment,
-    summary: truncateAnnotationSummary(comment)
-  };
-}
-
-function createPlaceholderDiffAnnotation(id: string, index: number, init: ReviewBridgeInit): DiffAnnotation | null {
-  const file = init.files[index % Math.max(init.files.length, 1)];
-  if (!file) {
-    return null;
-  }
-
-  const firstChangedLine = findFirstChangedLine(file);
-  if (!firstChangedLine) {
-    return {
-      kind: "diff",
-      id,
-      filePath: file.displayPath,
-      lineSource: "new",
-      lineStart: 1,
-      comment: `Placeholder diff note ${index + 1} for ${file.displayPath}.`,
-      summary: truncateAnnotationSummary(`Placeholder diff note ${index + 1} for ${file.displayPath}.`)
-    };
-  }
-
-  const comment = `Placeholder diff note ${index + 1} for ${file.displayPath}:${firstChangedLine.lineNumber}.`;
-  return {
-    kind: "diff",
-    id,
-    filePath: file.displayPath,
-    lineSource: firstChangedLine.lineSource,
-    lineStart: firstChangedLine.lineNumber,
-    comment,
-    summary: truncateAnnotationSummary(comment)
+    comment
   };
 }
