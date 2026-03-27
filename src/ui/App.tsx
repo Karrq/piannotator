@@ -29,6 +29,7 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
   const [shiftKeyHeld, setShiftKeyHeld] = useState(false);
   const [pendingFinalAction, setPendingFinalAction] = useState<PendingFinalAction>(null);
   const [diffMode, setDiffMode] = useState(DiffModeEnum.Unified);
+  const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
 
   const subtitle = useMemo(() => {
     if (init.mode === "diff") {
@@ -130,6 +131,18 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
     setAnnotations([]);
   };
 
+  const toggleCollapsed = (filePath: string) => {
+    setCollapsedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(filePath)) {
+        next.delete(filePath);
+      } else {
+        next.add(filePath);
+      }
+      return next;
+    });
+  };
+
   const annotationActions = {
     addDiffAnnotation: (draft: DiffAnnotationDraft) => addAnnotation(draft),
     addTextAnnotation: (draft: TextAnnotationDraft) => addAnnotation(draft),
@@ -192,6 +205,8 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
             files={init.files}
             annotations={annotations}
             diffMode={diffMode}
+            collapsedFiles={collapsedFiles}
+            onToggleCollapsed={toggleCollapsed}
             shiftKeyHeld={shiftKeyHeld}
             addDiffAnnotation={annotationActions.addDiffAnnotation}
             updateComment={annotationActions.updateComment}

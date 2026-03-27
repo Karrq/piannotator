@@ -241,6 +241,33 @@ button:disabled {
   border-radius: 10px 10px 0 0;
 }
 
+.review-panel__header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.diff-panel__collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #8b949e;
+  cursor: pointer;
+}
+
+.diff-panel__collapse-btn:hover {
+  background: #21262d;
+  color: #e6edf3;
+}
+
 .review-panel__title {
   font-size: 1rem;
   font-weight: 600;

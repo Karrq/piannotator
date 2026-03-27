@@ -12,6 +12,8 @@ interface DiffPanelProps {
   file: ReviewFile;
   annotations: DiffAnnotation[];
   diffMode: DiffModeEnum;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
   shiftKeyHeld: boolean;
   rangeAnchor: RangeAnchor | null;
   onRangeAnchorChange: (anchor: RangeAnchor | null) => void;
@@ -24,6 +26,8 @@ export function DiffPanel({
   file,
   annotations,
   diffMode,
+  collapsed,
+  onToggleCollapse,
   shiftKeyHeld,
   rangeAnchor,
   onRangeAnchorChange,
@@ -40,15 +44,25 @@ export function DiffPanel({
   return (
     <section className="review-panel review-panel--diff">
       <div className="review-panel__header review-panel__header--sticky">
-        <div>
-          <div className="review-panel__title">{file.displayPath}</div>
-          <div className="review-panel__meta">
-            +{file.additions} additions · -{file.deletions} deletions · {annotations.length} annotation{annotations.length === 1 ? "" : "s"}
-            {anchorLabel ? ` · anchor ${anchorLabel}` : ""}
+        <div className="review-panel__header-left">
+          <button type="button" className="diff-panel__collapse-btn" onClick={onToggleCollapse} aria-label={collapsed ? "Expand file" : "Collapse file"}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              {collapsed
+                ? <path d="M6.427 4.427a.25.25 0 0 1 .354 0l3.396 3.396a.25.25 0 0 1 0 .354l-3.396 3.396a.25.25 0 0 1-.354-.354L9.646 8 6.427 4.781a.25.25 0 0 1 0-.354Z" />
+                : <path d="M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z" />
+              }
+            </svg>
+          </button>
+          <div>
+            <div className="review-panel__title">{file.displayPath}</div>
+            <div className="review-panel__meta">
+              +{file.additions} additions · -{file.deletions} deletions · {annotations.length} annotation{annotations.length === 1 ? "" : "s"}
+              {anchorLabel ? ` · anchor ${anchorLabel}` : ""}
+            </div>
           </div>
         </div>
       </div>
-      <div className="review-panel__body review-panel__body--diff">
+      {!collapsed && <div className="review-panel__body review-panel__body--diff">
         <DiffErrorBoundary fallback={<DiffRenderFallback file={file} />}>
           <DiffView
             diffFile={diffFile}
@@ -103,7 +117,7 @@ export function DiffPanel({
             )}
           />
         </DiffErrorBoundary>
-      </div>
+      </div>}
     </section>
   );
 }
