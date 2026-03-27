@@ -66,9 +66,8 @@ export interface Review {
   id: string;
   title: string;
   source: ReviewSource;
-  files: ReviewFile[];
   annotations: Annotation[];
-  versions?: ReviewVersion[];
+  versions: ReviewVersion[];
   overallComment?: string;
   createdAt: string;
 }

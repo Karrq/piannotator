@@ -36,7 +36,7 @@ export class StubReviewClient implements ReviewClient {
     }
 
     return {
-      versions: [{ command: input.command, annotations }]
+      versions: [{ command: input.command, annotations, files: input.files }]
     };
   }
 }

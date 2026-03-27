@@ -247,7 +247,7 @@ export default function (pi: ExtensionAPI) {
       return { cancelled: true };
     }
 
-    const review = createReview(source, files, clientResult.versions, clientResult.overallComment);
+    const review = createReview(source, clientResult.versions, clientResult.overallComment);
     reviews.push(review);
     return { review, cancelled: false };
   }
@@ -305,7 +305,6 @@ export default function (pi: ExtensionAPI) {
 
   function createReview(
     source: ReviewSource,
-    initialFiles: ReviewFile[],
     versions: ReviewBridgeVersion[],
     overallComment?: string
   ): Review {
@@ -319,9 +318,7 @@ export default function (pi: ExtensionAPI) {
 
     for (let vi = 0; vi < keptVersions.length; vi++) {
       const version = keptVersions[vi];
-      const originalIndex = versions.indexOf(version);
-      const files = version.files ?? (originalIndex === 0 ? initialFiles : []);
-      reviewVersions.push({ command: version.command, files });
+      reviewVersions.push({ command: version.command, files: version.files ?? [] });
       for (const draft of version.annotations) {
         allDrafts.push({ ...draft, versionIndex: vi });
       }
@@ -337,7 +334,6 @@ export default function (pi: ExtensionAPI) {
       id: reviewId,
       title: source.title,
       source,
-      files: initialFiles,
       annotations,
       versions: reviewVersions,
       overallComment,
@@ -472,10 +468,7 @@ function formatDetail(review: Review, annotation: Annotation): string {
   const lines = [`Annotation ${annotation.id} in ${reference}`, ""];
 
   if (annotation.filePath) {
-    // Use version-specific files if available, else fall back to review.files
-    const versionFiles = annotation.versionIndex !== undefined && review.versions?.[annotation.versionIndex]?.files.length
-      ? review.versions[annotation.versionIndex].files
-      : review.files;
+    const versionFiles = annotation.versionIndex !== undefined ? review.versions[annotation.versionIndex]?.files ?? [] : [];
     const file = versionFiles.find((item) => item.displayPath === annotation.filePath);
     if (file) {
       const context = extractDiffContext(file, annotation.lineSource, annotation.lineStart, annotation.lineEnd);

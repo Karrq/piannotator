@@ -77,11 +77,10 @@ const diffRequest = await annotateTool.execute(
 );
 assert.match(diffRequest.content[0].text, /Review review-1/);
 assert.equal(diffRequest.details.review.id, "review-1");
-assert.equal(diffRequest.details.review.files.length, 1);
 assert.equal(diffRequest.details.review.annotations.length, 1);
 assert.equal(diffRequest.details.review.annotations[0].filePath, "src/example.ts");
-assert.ok(diffRequest.details.review.versions, "review should have versions");
 assert.equal(diffRequest.details.review.versions.length, 1);
+assert.equal(diffRequest.details.review.versions[0].files.length, 1);
 
 // Verify request result includes diff annotation overview
 assert.match(diffRequest.content[0].text, /Version 1/);
