@@ -43,14 +43,15 @@ export function ReviewBanner({
   activeTabIndex,
   onTabChange
 }: ReviewBannerProps) {
-  const showTabs = tabs && tabs.length > 1 && onTabChange && activeTabIndex !== undefined;
-  const displayTitle = showTabs ? (tabs[activeTabIndex].command || `Tab ${activeTabIndex + 1}`) : title;
+  const hasTabs = tabs && onTabChange && activeTabIndex !== undefined;
+  const displayTitle = hasTabs ? (tabs[activeTabIndex].command || `Tab ${activeTabIndex + 1}`) : title;
+  const multiTab = hasTabs && tabs.length > 1;
 
   return (
     <header className="review-banner">
       <div className="review-banner__meta">
-        {showTabs ? (
-          <div className="review-banner__tabs">
+        <div className="review-banner__tabs">
+          {hasTabs && (
             <button
               type="button"
               className="review-banner__tab-nav"
@@ -60,12 +61,14 @@ export function ReviewBanner({
             >
               <ChevronLeftIcon size={16} />
             </button>
-            <div className="review-banner__tab-label">
-              <div className="review-banner__title" title={displayTitle}>{displayTitle}</div>
-              <div className="review-banner__subtitle">
-                {activeTabIndex + 1}/{tabs.length} · {activeAnnotationCount} annotation{activeAnnotationCount === 1 ? "" : "s"}
-              </div>
+          )}
+          <div className="review-banner__tab-label">
+            <div className="review-banner__title" title={displayTitle}>{displayTitle}</div>
+            <div className="review-banner__subtitle">
+              {multiTab ? `${activeTabIndex + 1}/${tabs.length} · ` : ""}{activeAnnotationCount} annotation{activeAnnotationCount === 1 ? "" : "s"}
             </div>
+          </div>
+          {hasTabs && (
             <button
               type="button"
               className="review-banner__tab-nav"
@@ -75,15 +78,8 @@ export function ReviewBanner({
             >
               <ChevronRightIcon size={16} />
             </button>
-          </div>
-        ) : (
-          <>
-            <div className="review-banner__title">{displayTitle}</div>
-            <div className="review-banner__subtitle">
-              {activeAnnotationCount} annotation{activeAnnotationCount === 1 ? "" : "s"}
-            </div>
-          </>
-        )}
+          )}
+        </div>
       </div>
       <div className="review-banner__actions">
         {totalFiles > 0 && <ProgressCircle total={totalFiles} viewed={viewedCount} />}
