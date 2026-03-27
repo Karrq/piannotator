@@ -80,14 +80,17 @@ assert.equal(diffRequest.details.review.id, "review-1");
 assert.equal(diffRequest.details.review.files.length, 1);
 assert.equal(diffRequest.details.review.annotations.length, 1);
 assert.equal(diffRequest.details.review.annotations[0].filePath, "src/example.ts");
+assert.ok(diffRequest.details.review.versions, "review should have versions");
+assert.equal(diffRequest.details.review.versions.length, 1);
 
 // Verify request result includes diff annotation overview
+assert.match(diffRequest.content[0].text, /Version 1/);
 assert.match(diffRequest.content[0].text, /src\/example.ts:/);
 
 // Detail lookup - single ID
 const diffDetail = await annotateTool.execute(
   "tool-call-2",
-  { action: "detail", reviewId: "review-1", annotationId: ["A1"] },
+  { action: "detail", reviewId: "review-1", annotationIds: ["A1"] },
   undefined,
   undefined,
   ctx
@@ -98,7 +101,7 @@ assert.match(diffDetail.content[0].text, /Context \(@@ -1,4 \+1,5 @@\):/);
 // Detail lookup - missing ID is noted inline
 const missingDetail = await annotateTool.execute(
   "tool-call-2b",
-  { action: "detail", reviewId: "review-1", annotationId: ["A1", "A99"] },
+  { action: "detail", reviewId: "review-1", annotationIds: ["A1", "A99"] },
   undefined,
   undefined,
   ctx
@@ -109,7 +112,7 @@ assert.match(missingDetail.content[0].text, /Annotation A99 was not found/);
 // Detail lookup - range expansion
 const rangeDetail = await annotateTool.execute(
   "tool-call-2c",
-  { action: "detail", reviewId: "review-1", annotationId: ["A1..A1"] },
+  { action: "detail", reviewId: "review-1", annotationIds: ["A1..A1"] },
   undefined,
   undefined,
   ctx

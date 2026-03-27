@@ -1,5 +1,6 @@
 export const ANNOTATION_SUMMARY_LIMIT = 50;
 
+/** Which side of the diff an annotation targets: the old (deleted) or new (added) file. */
 export type AnnotationLineSource = "old" | "new";
 export type ReviewFileChangeType = "modified" | "added" | "deleted" | "renamed";
 
@@ -69,7 +70,6 @@ export interface Review {
   annotations: Annotation[];
   versions?: ReviewVersion[];
   overallComment?: string;
-  finalCommand?: string;
   createdAt: string;
 }
 

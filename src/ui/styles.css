@@ -92,6 +92,44 @@ button:disabled {
   font-size: 0.9rem;
 }
 
+.review-banner__tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.review-banner__tab-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.8rem;
+  height: 1.8rem;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #8b949e;
+  cursor: pointer;
+}
+
+.review-banner__tab-nav:hover:not(:disabled) {
+  background: #21262d;
+  color: #e6edf3;
+}
+
+.review-banner__tab-nav:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.review-banner__tab-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
 .review-banner__actions {
   display: flex;
   align-items: center;
@@ -385,6 +423,13 @@ button:disabled {
   position: relative;
   position: sticky;
   top: 88px;
+  height: calc(100vh - 108px);
+}
+
+.file-tree-wrapper--collapsed {
+  position: sticky;
+  top: 88px;
+  height: calc(100vh - 108px);
 }
 
 .review-file-list {
@@ -397,6 +442,7 @@ button:disabled {
   border-radius: 10px;
   background: #161b22;
   overflow: hidden;
+  height: 100%;
 }
 
 .file-tree-panel--collapsed {
@@ -404,6 +450,7 @@ button:disabled {
   align-items: flex-start;
   justify-content: center;
   padding: 0.5rem 0;
+  height: 100%;
 }
 
 .file-tree-panel__collapse-btn {
@@ -449,55 +496,7 @@ button:disabled {
   border-bottom: 1px solid #30363d;
 }
 
-.file-tree-panel__header-content {
-  min-width: 0;
-  flex: 1;
-}
 
-.file-tree-tabs {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.file-tree-tabs__nav {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  width: 1.6rem;
-  height: 1.6rem;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: #8b949e;
-  cursor: pointer;
-}
-
-.file-tree-tabs__nav:hover:not(:disabled) {
-  background: #21262d;
-  color: #e6edf3;
-}
-
-.file-tree-tabs__nav:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.file-tree-tabs__label {
-  min-width: 0;
-  flex: 1;
-  text-align: center;
-}
-
-.file-tree-tabs__command {
-  font-size: 0.85rem;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
 .file-tree-panel__body {
   padding: 0.5rem;

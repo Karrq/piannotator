@@ -36,10 +36,10 @@ const AnnotateParamsSchema = Type.Object(
     reviewId: Type.Optional(
       Type.String({ description: "Review ID returned by request. Use with action=detail." })
     ),
-    annotationId: Type.Optional(
+    annotationIds: Type.Optional(
       Type.Array(
         Type.String({ description: "Annotation ID (e.g. \"A1\") or range (e.g. \"A1..A3\")" }),
-        { description: "Annotation IDs to retrieve. Supports ranges like \"A1..A3\"." }
+        { description: "Annotation IDs to retrieve. Supports ranges. Use with action=detail." }
       )
     )
   },
@@ -111,7 +111,7 @@ export default function (pi: ExtensionAPI) {
     promptGuidelines: [
       "Use annotate.request to ask the user for annotations on command output.",
       "The request result includes an annotation overview. Use annotate.detail to get full context for a specific annotation.",
-      "Use annotate.detail with annotation IDs like [\"A1\"] or ranges like [\"A1..A3\"] to get context for annotations.",
+      "Use annotate.detail with annotationIds like [\"A1\"] or ranges like [\"A1..A3\"] to get context for annotations.",
       "Prefer command mode when the content should stay out of the model context."
     ],
     parameters: AnnotateParamsSchema,
@@ -319,7 +319,7 @@ export default function (pi: ExtensionAPI) {
       const version = versions[vi];
       reviewVersions.push({ command: version.command, files: vi === 0 ? initialFiles : [] });
       for (const draft of version.annotations) {
-        allDrafts.push({ ...draft, versionIndex: versions.length > 1 ? vi : undefined });
+        allDrafts.push({ ...draft, versionIndex: vi });
       }
     }
 
@@ -329,21 +329,14 @@ export default function (pi: ExtensionAPI) {
       summary: truncateAnnotationSummary(draft.comment)
     }));
 
-    // Detect if the command was changed (single version, different from source)
-    let finalCommand: string | undefined;
-    if (versions.length === 1 && source.kind === "command" && versions[0].command && versions[0].command !== source.command) {
-      finalCommand = versions[0].command;
-    }
-
     return {
       id: reviewId,
       title: source.title,
       source,
       files: initialFiles,
       annotations,
-      versions: versions.length > 1 ? reviewVersions : undefined,
+      versions: reviewVersions,
       overallComment,
-      finalCommand,
       createdAt: new Date().toISOString()
     };
   }
@@ -389,14 +382,14 @@ function parseDetailInput(params: AnnotateParams): DetailInput | { error: string
     return { error: "annotate.detail requires reviewId." };
   }
 
-  if (params.annotationId === undefined || params.annotationId.length === 0) {
-    return { error: "annotate.detail requires annotationId." };
+  if (params.annotationIds === undefined || params.annotationIds.length === 0) {
+    return { error: "annotate.detail requires annotationIds." };
   }
 
   return {
     action: "detail",
     reviewId: params.reviewId,
-    annotationIds: params.annotationId
+    annotationIds: params.annotationIds
   };
 }
 
@@ -438,37 +431,24 @@ function combineCommandOutput(stdout: string, stderr: string, exitCode: number |
 
 function formatRequestResult(review: Review): string {
   const count = review.annotations.length;
+  const versions = review.versions ?? [];
   const parts: string[] = [];
 
-  if (review.versions && review.versions.length > 1) {
-    parts.push(`Review ${review.id} (${review.versions.length} versions, ${count} annotation${count === 1 ? "" : "s"}):`);
-
-    for (let vi = 0; vi < review.versions.length; vi++) {
-      const version = review.versions[vi];
-      const versionAnnotations = review.annotations.filter((a) => a.versionIndex === vi);
-      parts.push("");
-      parts.push(`Version ${vi + 1}${version.command ? ` (${version.command})` : ""}:`);
-      if (versionAnnotations.length === 0) {
-        parts.push("- No annotations");
-      } else {
-        for (const annotation of versionAnnotations) {
-          parts.push(`- ${annotation.id}: ${formatAnnotationReference(annotation)} - \"${annotation.summary}\"`);
-        }
-      }
-    }
+  if (versions.length > 1) {
+    parts.push(`Review ${review.id} (${versions.length} versions, ${count} annotation${count === 1 ? "" : "s"}):`);
   } else {
     parts.push(`Review ${review.id} (${count} annotation${count === 1 ? "" : "s"}):`);
+  }
 
-    if (review.finalCommand) {
-      parts.push("");
-      parts.push("Note: The review command was changed by the user.");
-      parts.push(`Final command: ${review.finalCommand}`);
-    }
-
-    if (count === 0 && !review.overallComment) {
-      parts.push("- No annotations submitted.");
+  for (let vi = 0; vi < versions.length; vi++) {
+    const version = versions[vi];
+    const versionAnnotations = review.annotations.filter((a) => a.versionIndex === vi);
+    parts.push("");
+    parts.push(`Version ${vi + 1}${version.command ? ` (${version.command})` : ""}:`);
+    if (versionAnnotations.length === 0) {
+      parts.push("- No annotations");
     } else {
-      for (const annotation of review.annotations) {
+      for (const annotation of versionAnnotations) {
         parts.push(`- ${annotation.id}: ${formatAnnotationReference(annotation)} - \"${annotation.summary}\"`);
       }
     }
@@ -546,8 +526,8 @@ function renderCall(args: AnnotateParams, theme: Theme) {
       );
     }
     case "detail": {
-      const ids = args.annotationId ?? [];
-      const idLabel = ids.length === 0 ? "(missing annotationId)" : ids.length === 1 ? ids[0] : `${ids.length} annotations`;
+      const ids = args.annotationIds ?? [];
+      const idLabel = ids.length === 0 ? "(missing annotationIds)" : ids.length === 1 ? ids[0] : `${ids.length} annotations`;
       return new Text(
         theme.fg("toolTitle", theme.bold("annotate ")) +
           theme.fg("muted", `detail ${args.reviewId ?? "(missing reviewId)"}`) +

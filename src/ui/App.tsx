@@ -257,6 +257,9 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
         onSubmit={openSubmitConfirmation}
         onCancel={openCancelConfirmation}
         onClear={clearAnnotations}
+        tabs={tabs.map((tab) => ({ id: tab.id, command: tab.command, annotationCount: tab.annotations.length }))}
+        activeTabIndex={activeTabIndex}
+        onTabChange={setActiveTabIndex}
       />
       {pendingFinalAction !== null ? (
         <div className="review-modal" role="presentation" onClick={dismissConfirmation}>
@@ -355,9 +358,6 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
               annotations: removeAnnotation(tab.annotations, annotationId)
             }));
           }}
-          tabs={tabs.map((tab) => ({ id: tab.id, command: tab.command, annotationCount: tab.annotations.length }))}
-          activeTabIndex={activeTabIndex}
-          onTabChange={setActiveTabIndex}
         />
 
         <section className="review-panel">

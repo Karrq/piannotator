@@ -6,12 +6,6 @@ import { FileTree } from "./FileTree.js";
 import { buildFileTree, sortFilesForTreeOrder } from "./file-tree-data.js";
 import type { RangeAnchor } from "./range-selection.js";
 
-interface TabInfo {
-  id: string;
-  command: string;
-  annotationCount: number;
-}
-
 interface ReviewViewProps {
   files: ReviewFile[];
   annotations: Annotation[];
@@ -24,16 +18,13 @@ interface ReviewViewProps {
   addAnnotation: (draft: AnnotationDraft) => void;
   updateComment: (annotationId: string, comment: string) => void;
   deleteAnnotation: (annotationId: string) => void;
-  tabs?: TabInfo[];
-  activeTabIndex?: number;
-  onTabChange?: (index: number) => void;
 }
 
 interface FileScopedRangeAnchor extends RangeAnchor {
   filePath: string;
 }
 
-export function ReviewView({ files, annotations, diffMode, collapsedFiles, onToggleCollapsed, viewedFiles, onToggleViewed, shiftKeyHeld, addAnnotation, updateComment, deleteAnnotation, tabs, activeTabIndex, onTabChange }: ReviewViewProps) {
+export function ReviewView({ files, annotations, diffMode, collapsedFiles, onToggleCollapsed, viewedFiles, onToggleViewed, shiftKeyHeld, addAnnotation, updateComment, deleteAnnotation }: ReviewViewProps) {
   const orderedFiles = useMemo(() => sortFilesForTreeOrder(files), [files]);
   const [activeFilePath, setActiveFilePath] = useState(orderedFiles[0]?.displayPath ?? "");
   const [rangeAnchor, setRangeAnchor] = useState<FileScopedRangeAnchor | null>(null);
@@ -222,16 +213,13 @@ export function ReviewView({ files, annotations, diffMode, collapsedFiles, onTog
   return (
     <div className={showFileTree ? "review-view-layout" : "review-file-list"} style={gridStyle}>
       {showFileTree ? (
-        <div className="file-tree-wrapper">
+        <div className={treeCollapsed ? "file-tree-wrapper--collapsed" : "file-tree-wrapper"}>
           <FileTree
             nodes={fileTreeNodes}
             activeFilePath={activeFilePath}
             onSelectFile={scrollToFile}
             collapsed={treeCollapsed}
             onToggleCollapse={() => setTreeCollapsed((c) => !c)}
-            tabs={tabs}
-            activeTabIndex={activeTabIndex}
-            onTabChange={onTabChange}
           />
           {!treeCollapsed && <div className="file-tree-resize-handle" onMouseDown={startResize} />}
         </div>
