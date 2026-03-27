@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { normalizeRange, type Annotation, type TextAnnotation, type TextAnnotationDraft } from "../types.js";
 import { CommentForm } from "./CommentForm.js";
 import { CommentThread } from "./CommentThread.js";
@@ -7,6 +7,7 @@ import { buildTextThreadMap, isTextLineAnnotated } from "./text-review-helpers.j
 interface TextReviewProps {
   content: string;
   annotations: Annotation[];
+  shiftKeyHeld: boolean;
   onAddAnnotation: (draft: TextAnnotationDraft) => void;
   onUpdateAnnotation: (annotationId: string, comment: string) => void;
   onDeleteAnnotation: (annotationId: string) => void;
@@ -22,35 +23,17 @@ interface TextEditorSelection {
   lineEnd?: number;
 }
 
-export function TextReview({ content, annotations, onAddAnnotation, onUpdateAnnotation, onDeleteAnnotation }: TextReviewProps) {
-  const [shiftKeyHeld, setShiftKeyHeld] = useState(false);
+const MAX_RENDERED_TEXT_LINES = 5000;
+
+export function TextReview({ content, annotations, shiftKeyHeld, onAddAnnotation, onUpdateAnnotation, onDeleteAnnotation }: TextReviewProps) {
   const [rangeAnchor, setRangeAnchor] = useState<TextRangeAnchor | null>(null);
   const [editorSelection, setEditorSelection] = useState<TextEditorSelection | null>(null);
 
   const lines = useMemo(() => content.split(/\r?\n/), [content]);
+  const visibleLines = lines.slice(0, MAX_RENDERED_TEXT_LINES);
+  const hasHiddenLines = lines.length > MAX_RENDERED_TEXT_LINES;
   const textAnnotations = annotations.filter((annotation): annotation is TextAnnotation => annotation.kind === "text");
   const threadMap = useMemo(() => buildTextThreadMap(textAnnotations), [textAnnotations]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Shift") {
-        setShiftKeyHeld(true);
-      }
-    };
-
-    const onKeyUp = (event: KeyboardEvent) => {
-      if (event.key === "Shift") {
-        setShiftKeyHeld(false);
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
-    };
-  }, []);
 
   return (
     <section className="review-panel">
@@ -67,8 +50,14 @@ export function TextReview({ content, annotations, onAddAnnotation, onUpdateAnno
         <div className="review-hint">
           Click the line button to comment. Hold Shift and click another line to turn the active anchor into a range.
         </div>
+        {hasHiddenLines ? (
+          <div className="review-hint review-hint--warning">
+            Showing the first {MAX_RENDERED_TEXT_LINES.toLocaleString()} lines for responsiveness. {lines.length - MAX_RENDERED_TEXT_LINES} later line
+            {lines.length - MAX_RENDERED_TEXT_LINES === 1 ? " is" : "s are"} hidden in the UI preview.
+          </div>
+        ) : null}
         <div className="text-review">
-          {lines.map((line, index) => {
+          {visibleLines.map((line, index) => {
             const lineNumber = index + 1;
             const currentSelection =
               editorSelection && editorSelection.clickedLineNumber === lineNumber ? editorSelection : null;

@@ -1,20 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Annotation, DiffAnnotation, DiffAnnotationDraft, ReviewFile } from "../types.js";
+import type { Annotation, DiffAnnotation, DiffAnnotationDraft, DiffAnnotationLineSource, ReviewFile } from "../types.js";
 import { DiffPanel } from "./DiffPanel.js";
 import { FileTree } from "./FileTree.js";
 import { buildFileTree } from "./file-tree-data.js";
+import type { RangeAnchor } from "./range-selection.js";
 
 interface ReviewViewProps {
   files: ReviewFile[];
   annotations: Annotation[];
+  shiftKeyHeld: boolean;
   addDiffAnnotation: (draft: DiffAnnotationDraft) => void;
   updateComment: (annotationId: string, comment: string) => void;
   deleteAnnotation: (annotationId: string) => void;
 }
 
-export function ReviewView({ files, annotations, addDiffAnnotation, updateComment, deleteAnnotation }: ReviewViewProps) {
+interface FileScopedRangeAnchor extends RangeAnchor {
+  filePath: string;
+}
+
+export function ReviewView({ files, annotations, shiftKeyHeld, addDiffAnnotation, updateComment, deleteAnnotation }: ReviewViewProps) {
   const diffAnnotations = annotations.filter((annotation): annotation is DiffAnnotation => annotation.kind === "diff");
   const [activeFilePath, setActiveFilePath] = useState(files[0]?.displayPath ?? "");
+  const [rangeAnchor, setRangeAnchor] = useState<FileScopedRangeAnchor | null>(null);
   const panelRefs = useRef(new Map<string, HTMLDivElement>());
 
   useEffect(() => {
@@ -22,6 +29,12 @@ export function ReviewView({ files, annotations, addDiffAnnotation, updateCommen
       setActiveFilePath(files[0]?.displayPath ?? "");
     }
   }, [activeFilePath, files]);
+
+  useEffect(() => {
+    if (rangeAnchor && !files.some((file) => file.displayPath === rangeAnchor.filePath)) {
+      setRangeAnchor(null);
+    }
+  }, [files, rangeAnchor]);
 
   useEffect(() => {
     if (files.length <= 1) {
@@ -100,6 +113,11 @@ export function ReviewView({ files, annotations, addDiffAnnotation, updateCommen
             <DiffPanel
               file={file}
               annotations={annotationsByFile.get(file.displayPath) ?? []}
+              shiftKeyHeld={shiftKeyHeld}
+              rangeAnchor={toLocalAnchor(rangeAnchor, file.displayPath)}
+              onRangeAnchorChange={(nextAnchor) => {
+                setRangeAnchor(nextAnchor ? { ...nextAnchor, filePath: file.displayPath } : null);
+              }}
               onAddAnnotation={addDiffAnnotation}
               onUpdateAnnotation={updateComment}
               onDeleteAnnotation={deleteAnnotation}
@@ -118,4 +136,15 @@ export function ReviewView({ files, annotations, addDiffAnnotation, updateCommen
 
 function toFileSectionId(filePath: string): string {
   return `file-${filePath.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
+}
+
+function toLocalAnchor(anchor: FileScopedRangeAnchor | null, filePath: string): RangeAnchor | null {
+  if (!anchor || anchor.filePath !== filePath) {
+    return null;
+  }
+
+  return {
+    lineNumber: anchor.lineNumber,
+    lineSource: anchor.lineSource as DiffAnnotationLineSource
+  };
 }

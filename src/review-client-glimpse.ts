@@ -25,7 +25,14 @@ export class GlimpseReviewClient implements ReviewClient {
   }
 
   async requestReview(input: ReviewClientRequest): Promise<ReviewClientResult | null> {
-    const template = await this.loadHtml();
+    let template: string;
+    try {
+      template = await this.loadHtml();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to load review UI template. Run npm run build first. Original error: ${message}`);
+    }
+
     const html = buildReviewWindowHtml(template, {
       title: input.title,
       mode: input.mode,
@@ -51,6 +58,10 @@ export class GlimpseReviewClient implements ReviewClient {
 }
 
 export function buildReviewWindowHtml(template: string, payload: ReviewBridgeInit): string {
+  if (!template.includes(REVIEW_UI_BOOTSTRAP_MARKER)) {
+    throw new Error("Review UI template is malformed: missing bootstrap marker. Run npm run build again.");
+  }
+
   const bootstrap = `<script>window.__PIANNOTATOR_INIT__ = ${serializeForInlineScript(payload)};<\/script>`;
   return template.replace(REVIEW_UI_BOOTSTRAP_MARKER, bootstrap);
 }

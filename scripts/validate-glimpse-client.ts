@@ -46,4 +46,18 @@ const cancelled = await cancelledClient.requestReview({
 });
 assert.equal(cancelled, null);
 
+await assert.rejects(
+  async () =>
+    new GlimpseReviewClient({
+      loadHtml: async () => "<html><body>broken</body></html>",
+      promptImpl: async () => ({ type: "cancel" })
+    }).requestReview({
+      title: "broken review",
+      mode: "text",
+      content: "line 1",
+      files: []
+    }),
+  /missing bootstrap marker/
+);
+
 console.log("Glimpse client validation passed.");

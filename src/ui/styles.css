@@ -209,6 +209,10 @@ button:disabled {
   background: #0d1117;
 }
 
+.review-hint--warning {
+  color: #d29922;
+}
+
 .review-view-layout {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
@@ -441,4 +445,24 @@ button:disabled {
 
 .empty-state {
   color: #8b949e;
+}
+
+@media (max-width: 960px) {
+  .review-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .review-banner__actions {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+
+  .review-view-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .file-tree-panel {
+    position: static;
+  }
 }

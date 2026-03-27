@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ReviewBanner } from "./ReviewBanner.js";
 import { ReviewView } from "./ReviewView.js";
 import { TextReview } from "./TextReview.js";
@@ -23,7 +23,7 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
   const initialState = useMemo(() => materializeAnnotations(init.annotations), [init.annotations]);
   const [annotations, setAnnotations] = useState<Annotation[]>(initialState.annotations);
   const [nextAnnotationNumber, setNextAnnotationNumber] = useState(initialState.nextAnnotationNumber);
-  const nextAnnotationNumberRef = useRef(initialState.nextAnnotationNumber);
+  const [shiftKeyHeld, setShiftKeyHeld] = useState(false);
 
   const subtitle = useMemo(() => {
     if (init.mode === "diff") {
@@ -39,12 +39,7 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
   useEffect(() => {
     setAnnotations(initialState.annotations);
     setNextAnnotationNumber(initialState.nextAnnotationNumber);
-    nextAnnotationNumberRef.current = initialState.nextAnnotationNumber;
   }, [initialState]);
-
-  useEffect(() => {
-    nextAnnotationNumberRef.current = nextAnnotationNumber;
-  }, [nextAnnotationNumber]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -54,21 +49,35 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
         return;
       }
 
+      if (event.key === "Shift") {
+        setShiftKeyHeld(true);
+      }
+
       if (event.key === "Enter" && event.metaKey && canSubmit) {
         event.preventDefault();
         onSubmit(annotationsToDrafts(annotations));
       }
     };
 
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "Shift") {
+        setShiftKeyHeld(false);
+      }
+    };
+
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
   }, [annotations, canSubmit, onCancel, onSubmit]);
 
   const addAnnotation = (draft: AnnotationDraft) => {
-    const annotationNumber = nextAnnotationNumberRef.current;
-    setAnnotations((current) => [...current, materializeAnnotation(draft, annotationNumber)]);
-    setNextAnnotationNumber(annotationNumber + 1);
-    nextAnnotationNumberRef.current = annotationNumber + 1;
+    setNextAnnotationNumber((current) => {
+      setAnnotations((existing) => [...existing, materializeAnnotation(draft, current)]);
+      return current + 1;
+    });
   };
 
   const clearAnnotations = () => {
@@ -120,6 +129,7 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
           <ReviewView
             files={init.files}
             annotations={annotations}
+            shiftKeyHeld={shiftKeyHeld}
             addDiffAnnotation={annotationActions.addDiffAnnotation}
             updateComment={annotationActions.updateComment}
             deleteAnnotation={annotationActions.deleteAnnotation}
@@ -128,6 +138,7 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
           <TextReview
             content={init.content}
             annotations={annotations}
+            shiftKeyHeld={shiftKeyHeld}
             onAddAnnotation={annotationActions.addTextAnnotation}
             onUpdateAnnotation={annotationActions.updateComment}
             onDeleteAnnotation={annotationActions.deleteAnnotation}
