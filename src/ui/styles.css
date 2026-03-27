@@ -209,9 +209,88 @@ button:disabled {
   background: #0d1117;
 }
 
+.review-view-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
 .review-file-list {
   display: grid;
   gap: 0.9rem;
+}
+
+.file-tree-panel {
+  position: sticky;
+  top: 88px;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  background: #161b22;
+  overflow: hidden;
+}
+
+.file-tree-panel__header {
+  padding: 1rem;
+  border-bottom: 1px solid #30363d;
+}
+
+.file-tree-panel__body {
+  padding: 0.5rem;
+}
+
+.file-tree-node {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0.55rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+}
+
+.file-tree-node:hover {
+  background: #21262d;
+}
+
+.file-tree-node--selected {
+  background: rgba(56, 139, 253, 0.2);
+}
+
+.file-tree-node__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-tree-node__stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #8b949e;
+  font-size: 0.75rem;
+}
+
+.file-tree-node__annotations {
+  display: inline-flex;
+  min-width: 1.4rem;
+  justify-content: center;
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  background: #21262d;
+  color: #e6edf3;
+}
+
+.file-tree-node__delta--add {
+  color: #3fb950;
+}
+
+.file-tree-node__delta--del {
+  color: #f85149;
 }
 
 .review-code {

@@ -1,5 +1,8 @@
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Annotation, DiffAnnotation, DiffAnnotationDraft, ReviewFile } from "../types.js";
 import { DiffPanel } from "./DiffPanel.js";
+import { FileTree } from "./FileTree.js";
+import { buildFileTree } from "./file-tree-data.js";
 
 interface ReviewViewProps {
   files: ReviewFile[];
@@ -11,11 +14,57 @@ interface ReviewViewProps {
 
 export function ReviewView({ files, annotations, addDiffAnnotation, updateComment, deleteAnnotation }: ReviewViewProps) {
   const diffAnnotations = annotations.filter((annotation): annotation is DiffAnnotation => annotation.kind === "diff");
-  const primaryFile = files[0];
-  const hiddenFileCount = Math.max(0, files.length - 1);
-  const primaryFileAnnotations = primaryFile ? diffAnnotations.filter((annotation) => annotation.filePath === primaryFile.displayPath) : [];
+  const [activeFilePath, setActiveFilePath] = useState(files[0]?.displayPath ?? "");
+  const panelRefs = useRef(new Map<string, HTMLDivElement>());
 
-  if (!primaryFile) {
+  useEffect(() => {
+    if (!files.some((file) => file.displayPath === activeFilePath)) {
+      setActiveFilePath(files[0]?.displayPath ?? "");
+    }
+  }, [activeFilePath, files]);
+
+  useEffect(() => {
+    if (files.length <= 1) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
+        const filePath = visible?.target.getAttribute("data-file-path");
+        if (filePath) {
+          setActiveFilePath(filePath);
+        }
+      },
+      {
+        rootMargin: "-20% 0px -55% 0px",
+        threshold: [0.2, 0.45, 0.7]
+      }
+    );
+
+    for (const element of panelRefs.current.values()) {
+      observer.observe(element);
+    }
+
+    return () => observer.disconnect();
+  }, [files]);
+
+  const annotationsByFile = useMemo(() => {
+    const grouped = new Map<string, DiffAnnotation[]>();
+    for (const annotation of diffAnnotations) {
+      const existing = grouped.get(annotation.filePath) ?? [];
+      existing.push(annotation);
+      grouped.set(annotation.filePath, existing);
+    }
+    return grouped;
+  }, [diffAnnotations]);
+
+  const fileTreeNodes = useMemo(() => buildFileTree(files, diffAnnotations), [diffAnnotations, files]);
+  const showFileTree = files.length > 1;
+
+  if (!files[0]) {
     return (
       <section className="review-panel">
         <div className="review-panel__header">
@@ -32,29 +81,41 @@ export function ReviewView({ files, annotations, addDiffAnnotation, updateCommen
   }
 
   return (
-    <div className="review-file-list">
-      <DiffPanel
-        file={primaryFile}
-        annotations={primaryFileAnnotations}
-        onAddAnnotation={addDiffAnnotation}
-        onUpdateAnnotation={updateComment}
-        onDeleteAnnotation={deleteAnnotation}
-      />
-      {hiddenFileCount > 0 ? (
-        <section className="review-panel">
-          <div className="review-panel__header">
-            <div>
-              <div className="review-panel__title">More files coming soon</div>
-              <div className="review-panel__meta">Phase 10 adds the multi-file review list and tree sidebar.</div>
-            </div>
+    <div className={showFileTree ? "review-view-layout" : "review-file-list"}>
+      {showFileTree ? <FileTree nodes={fileTreeNodes} activeFilePath={activeFilePath} onSelectFile={scrollToFile} /> : null}
+      <div className="review-file-list">
+        {files.map((file) => (
+          <div
+            key={file.displayPath}
+            id={toFileSectionId(file.displayPath)}
+            data-file-path={file.displayPath}
+            ref={(element) => {
+              if (element) {
+                panelRefs.current.set(file.displayPath, element);
+              } else {
+                panelRefs.current.delete(file.displayPath);
+              }
+            }}
+          >
+            <DiffPanel
+              file={file}
+              annotations={annotationsByFile.get(file.displayPath) ?? []}
+              onAddAnnotation={addDiffAnnotation}
+              onUpdateAnnotation={updateComment}
+              onDeleteAnnotation={deleteAnnotation}
+            />
           </div>
-          <div className="review-panel__body">
-            <p className="empty-state">
-              {hiddenFileCount} additional file{hiddenFileCount === 1 ? " is" : "s are"} parsed and waiting for the multi-file view.
-            </p>
-          </div>
-        </section>
-      ) : null}
+        ))}
+      </div>
     </div>
   );
+
+  function scrollToFile(filePath: string) {
+    setActiveFilePath(filePath);
+    panelRefs.current.get(filePath)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+function toFileSectionId(filePath: string): string {
+  return `file-${filePath.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
 }
