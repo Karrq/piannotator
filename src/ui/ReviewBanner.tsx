@@ -1,8 +1,13 @@
+import { DiffModeEnum } from "@git-diff-view/react";
+
 interface ReviewBannerProps {
   title: string;
   subtitle: string;
   annotationCount: number;
   canSubmit: boolean;
+  isDiffMode: boolean;
+  diffMode: DiffModeEnum;
+  onDiffModeChange: (mode: DiffModeEnum) => void;
   onSubmit: () => void;
   onCancel: () => void;
   onClear: () => void;
@@ -13,6 +18,9 @@ export function ReviewBanner({
   subtitle,
   annotationCount,
   canSubmit,
+  isDiffMode,
+  diffMode,
+  onDiffModeChange,
   onSubmit,
   onCancel,
   onClear
@@ -26,6 +34,24 @@ export function ReviewBanner({
         </div>
       </div>
       <div className="review-banner__actions">
+        {isDiffMode && (
+          <div className="diff-mode-toggle">
+            <button
+              type="button"
+              className={`diff-mode-toggle__btn${diffMode === DiffModeEnum.Unified ? " diff-mode-toggle__btn--active" : ""}`}
+              onClick={() => onDiffModeChange(DiffModeEnum.Unified)}
+            >
+              Unified
+            </button>
+            <button
+              type="button"
+              className={`diff-mode-toggle__btn${diffMode === DiffModeEnum.Split ? " diff-mode-toggle__btn--active" : ""}`}
+              onClick={() => onDiffModeChange(DiffModeEnum.Split)}
+            >
+              Split
+            </button>
+          </div>
+        )}
         <button type="button" onClick={onCancel}>
           Cancel
         </button>

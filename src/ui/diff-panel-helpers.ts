@@ -28,6 +28,7 @@ export function createDiffViewFile(file: ReviewFile): DiffFile {
   diffFile.initTheme("dark");
   diffFile.init();
   diffFile.buildUnifiedDiffLines();
+  diffFile.buildSplitDiffLines();
   return diffFile;
 }
 

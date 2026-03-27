@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { DiffModeEnum } from "@git-diff-view/react";
 import type { Annotation, DiffAnnotation, DiffAnnotationDraft, DiffAnnotationLineSource, ReviewFile } from "../types.js";
 import { DiffPanel } from "./DiffPanel.js";
 import { FileTree } from "./FileTree.js";
@@ -8,6 +9,7 @@ import type { RangeAnchor } from "./range-selection.js";
 interface ReviewViewProps {
   files: ReviewFile[];
   annotations: Annotation[];
+  diffMode: DiffModeEnum;
   shiftKeyHeld: boolean;
   addDiffAnnotation: (draft: DiffAnnotationDraft) => void;
   updateComment: (annotationId: string, comment: string) => void;
@@ -18,7 +20,7 @@ interface FileScopedRangeAnchor extends RangeAnchor {
   filePath: string;
 }
 
-export function ReviewView({ files, annotations, shiftKeyHeld, addDiffAnnotation, updateComment, deleteAnnotation }: ReviewViewProps) {
+export function ReviewView({ files, annotations, diffMode, shiftKeyHeld, addDiffAnnotation, updateComment, deleteAnnotation }: ReviewViewProps) {
   const diffAnnotations = annotations.filter((annotation): annotation is DiffAnnotation => annotation.kind === "diff");
   const orderedFiles = useMemo(() => sortFilesForTreeOrder(files), [files]);
   const [activeFilePath, setActiveFilePath] = useState(orderedFiles[0]?.displayPath ?? "");
@@ -160,6 +162,7 @@ export function ReviewView({ files, annotations, shiftKeyHeld, addDiffAnnotation
             <DiffPanel
               file={file}
               annotations={annotationsByFile.get(file.displayPath) ?? []}
+              diffMode={diffMode}
               shiftKeyHeld={shiftKeyHeld}
               rangeAnchor={toLocalAnchor(rangeAnchor, file.displayPath)}
               onRangeAnchorChange={(nextAnchor) => {

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { DiffModeEnum, DiffView, SplitSide } from "@git-diff-view/react";
+import { type DiffModeEnum, DiffView, SplitSide } from "@git-diff-view/react";
 import { highlighter } from "@git-diff-view/lowlight";
 import type { DiffAnnotation, DiffAnnotationDraft, DiffAnnotationLineSource, ReviewFile } from "../types.js";
 import { buildDiffExtendData, createDiffViewFile } from "./diff-panel-helpers.js";
@@ -11,6 +11,7 @@ import { createSingleLineSelection, formatSelectionLabel, resolveRangeSelection,
 interface DiffPanelProps {
   file: ReviewFile;
   annotations: DiffAnnotation[];
+  diffMode: DiffModeEnum;
   shiftKeyHeld: boolean;
   rangeAnchor: RangeAnchor | null;
   onRangeAnchorChange: (anchor: RangeAnchor | null) => void;
@@ -22,6 +23,7 @@ interface DiffPanelProps {
 export function DiffPanel({
   file,
   annotations,
+  diffMode,
   shiftKeyHeld,
   rangeAnchor,
   onRangeAnchorChange,
@@ -50,7 +52,7 @@ export function DiffPanel({
         <DiffErrorBoundary fallback={<DiffRenderFallback file={file} />}>
           <DiffView
             diffFile={diffFile}
-            diffViewMode={DiffModeEnum.Unified}
+            diffViewMode={diffMode}
             diffViewTheme="dark"
             diffViewWrap
             diffViewFontSize={13}

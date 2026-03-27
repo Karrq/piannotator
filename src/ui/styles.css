@@ -114,6 +114,36 @@ button:disabled {
   background: #2ea043;
 }
 
+.diff-mode-toggle {
+  display: inline-flex;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.diff-mode-toggle__btn {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #8b949e;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.diff-mode-toggle__btn:hover:not(.diff-mode-toggle__btn--active) {
+  background: #21262d;
+}
+
+.diff-mode-toggle__btn--active {
+  background: #30363d;
+  color: #e6edf3;
+}
+
+.diff-mode-toggle__btn + .diff-mode-toggle__btn {
+  border-left: 1px solid #30363d;
+}
+
 .review-banner__badge {
   display: inline-flex;
   min-width: 1.4rem;

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { DiffModeEnum } from "@git-diff-view/react";
 import { ReviewBanner } from "./ReviewBanner.js";
 import { ReviewView } from "./ReviewView.js";
 import { TextReview } from "./TextReview.js";
@@ -27,6 +28,7 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
   const [nextAnnotationNumber, setNextAnnotationNumber] = useState(initialState.nextAnnotationNumber);
   const [shiftKeyHeld, setShiftKeyHeld] = useState(false);
   const [pendingFinalAction, setPendingFinalAction] = useState<PendingFinalAction>(null);
+  const [diffMode, setDiffMode] = useState(DiffModeEnum.Unified);
 
   const subtitle = useMemo(() => {
     if (init.mode === "diff") {
@@ -154,6 +156,9 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
         subtitle={subtitle}
         annotationCount={annotations.length}
         canSubmit={canSubmit}
+        isDiffMode={init.mode === "diff"}
+        diffMode={diffMode}
+        onDiffModeChange={setDiffMode}
         onSubmit={openSubmitConfirmation}
         onCancel={openCancelConfirmation}
         onClear={clearAnnotations}
@@ -186,6 +191,7 @@ export function App({ init, onSubmit, onCancel }: AppProps) {
           <ReviewView
             files={init.files}
             annotations={annotations}
+            diffMode={diffMode}
             shiftKeyHeld={shiftKeyHeld}
             addDiffAnnotation={annotationActions.addDiffAnnotation}
             updateComment={annotationActions.updateComment}
