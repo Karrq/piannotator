@@ -49,7 +49,7 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
   const [commandError, setCommandError] = useState<string | null>(null);
   const [commandRunning, setCommandRunning] = useState(false);
   const [pendingRerun, setPendingRerun] = useState(false);
-  const isCommandMode = !!init.command;
+
 
   // Create initial tab on mount
   useEffect(() => {
@@ -252,7 +252,6 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
         onDiffModeChange={setDiffMode}
         totalFiles={activeTab.files.length}
         viewedCount={activeTab.viewedFiles.size}
-        isCommandMode={isCommandMode}
         onOpenSettings={() => { setEditingCommand(activeTab.command); setShowSettings(true); }}
         onSubmit={openSubmitConfirmation}
         onCancel={openCancelConfirmation}

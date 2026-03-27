@@ -16,7 +16,6 @@ interface ReviewBannerProps {
   onDiffModeChange: (mode: DiffModeEnum) => void;
   totalFiles: number;
   viewedCount: number;
-  isCommandMode: boolean;
   onOpenSettings: () => void;
   onSubmit: () => void;
   onCancel: () => void;
@@ -34,7 +33,6 @@ export function ReviewBanner({
   onDiffModeChange,
   totalFiles,
   viewedCount,
-  isCommandMode,
   onOpenSettings,
   onSubmit,
   onCancel,
@@ -103,11 +101,9 @@ export function ReviewBanner({
             Split
           </button>
         </div>
-        {isCommandMode && (
-          <button type="button" className="review-banner__settings" onClick={onOpenSettings} aria-label="Settings">
-            <GearIcon size={16} />
-          </button>
-        )}
+        <button type="button" className="review-banner__settings" onClick={onOpenSettings} aria-label="Settings">
+          <GearIcon size={16} />
+        </button>
         <button type="button" onClick={onCancel}>
           Cancel
         </button>
