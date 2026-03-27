@@ -201,6 +201,14 @@ button:disabled {
   margin-bottom: 1rem;
 }
 
+.review-hint {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #30363d;
+  color: #8b949e;
+  font-size: 0.9rem;
+  background: #0d1117;
+}
+
 .review-file-list {
   display: grid;
   gap: 0.9rem;
