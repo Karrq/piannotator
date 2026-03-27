@@ -1,4 +1,3 @@
-import { DiffModeEnum } from "@git-diff-view/react";
 import { ChevronLeftIcon, ChevronRightIcon, GearIcon } from "@primer/octicons-react";
 import { ProgressCircle } from "./ProgressCircle.js";
 
@@ -14,8 +13,8 @@ interface ReviewBannerProps {
   activeAnnotationCount: number;
   /** Total annotations across all tabs (for submit badge) */
   totalAnnotationCount: number;
-  diffMode: DiffModeEnum;
-  onDiffModeChange: (mode: DiffModeEnum) => void;
+  diffMode: "unified" | "split";
+  onDiffModeChange: (mode: "unified" | "split") => void;
   totalFiles: number;
   viewedCount: number;
   onOpenSettings: () => void;
@@ -86,15 +85,15 @@ export function ReviewBanner({
         <div className="diff-mode-toggle">
           <button
             type="button"
-            className={`diff-mode-toggle__btn${diffMode === DiffModeEnum.Unified ? " diff-mode-toggle__btn--active" : ""}`}
-            onClick={() => onDiffModeChange(DiffModeEnum.Unified)}
+            className={`diff-mode-toggle__btn${diffMode === "unified" ? " diff-mode-toggle__btn--active" : ""}`}
+            onClick={() => onDiffModeChange("unified")}
           >
             Unified
           </button>
           <button
             type="button"
-            className={`diff-mode-toggle__btn${diffMode === DiffModeEnum.Split ? " diff-mode-toggle__btn--active" : ""}`}
-            onClick={() => onDiffModeChange(DiffModeEnum.Split)}
+            className={`diff-mode-toggle__btn${diffMode === "split" ? " diff-mode-toggle__btn--active" : ""}`}
+            onClick={() => onDiffModeChange("split")}
           >
             Split
           </button>

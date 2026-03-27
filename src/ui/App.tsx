@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DiffModeEnum } from "@git-diff-view/react";
 import { ReviewBanner } from "./ReviewBanner.js";
 import { ReviewView } from "./ReviewView.js";
 import { annotationsToDrafts, materializeAnnotation, removeAnnotation, updateAnnotationComment } from "./annotation-state.js";
@@ -38,9 +37,8 @@ type PendingFinalAction = "submit" | "cancel" | null;
 export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessage }: AppProps) {
   const [tabs, setTabs] = useState<ReviewTab[]>([]);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
-  const [shiftKeyHeld, setShiftKeyHeld] = useState(false);
   const [pendingFinalAction, setPendingFinalAction] = useState<PendingFinalAction>(null);
-  const [diffMode, setDiffMode] = useState(DiffModeEnum.Unified);
+  const [diffMode, setDiffMode] = useState<"unified" | "split">("unified");
   const [overallComment, setOverallComment] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [editingCommand, setEditingCommand] = useState(init.command ?? "");
@@ -49,6 +47,7 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
   const [commandError, setCommandError] = useState<string | null>(null);
   const [commandRunning, setCommandRunning] = useState(false);
   const [pendingRerun, setPendingRerun] = useState(false);
+  const [diffFont, setDiffFont] = useState(() => localStorage.getItem("piannotator-diff-font") || "");
 
 
   // Create initial tab on mount
@@ -164,22 +163,56 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
         return;
       }
 
-      if (event.key === "Shift") {
-        setShiftKeyHeld(true);
+      // Clipboard workaround for Glimpse WKWebView (no native Edit menu)
+      if (event.metaKey && !event.shiftKey) {
+        switch (event.key) {
+          case "c": {
+            const sel = window.getSelection()?.toString();
+            if (sel) navigator.clipboard.writeText(sel);
+            event.preventDefault();
+            return;
+          }
+          case "v": {
+            navigator.clipboard.readText().then((text) => {
+              const active = document.activeElement;
+              if (active instanceof HTMLTextAreaElement) {
+                const start = active.selectionStart;
+                const end = active.selectionEnd;
+                active.value = active.value.slice(0, start) + text + active.value.slice(end);
+                active.selectionStart = active.selectionEnd = start + text.length;
+                active.dispatchEvent(new Event("input", { bubbles: true }));
+              }
+            });
+            event.preventDefault();
+            return;
+          }
+          case "x": {
+            const sel = window.getSelection()?.toString();
+            if (sel) navigator.clipboard.writeText(sel);
+            document.execCommand("delete");
+            event.preventDefault();
+            return;
+          }
+          case "a":
+            document.execCommand("selectAll");
+            event.preventDefault();
+            return;
+          case "z":
+            document.execCommand("undo");
+            event.preventDefault();
+            return;
+        }
       }
-    };
-
-    const onKeyUp = (event: KeyboardEvent) => {
-      if (event.key === "Shift") {
-        setShiftKeyHeld(false);
+      if (event.metaKey && event.shiftKey && event.key === "z") {
+        document.execCommand("redo");
+        event.preventDefault();
+        return;
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
     };
   }, [cancelReview, dismissConfirmation, openCancelConfirmation, openSubmitConfirmation, pendingFinalAction, submitReview]);
 
@@ -325,6 +358,25 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
                 disabled={commandRunning}
               />
             </div>
+            <div className="settings-modal__field">
+              <label className="settings-modal__label" htmlFor="settings-font">Diff font family</label>
+              <input
+                id="settings-font"
+                type="text"
+                className="settings-modal__command"
+                value={diffFont}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setDiffFont(value);
+                  if (value) {
+                    localStorage.setItem("piannotator-diff-font", value);
+                  } else {
+                    localStorage.removeItem("piannotator-diff-font");
+                  }
+                }}
+                placeholder="e.g. JetBrains Mono, Fira Code, monospace"
+              />
+            </div>
             {commandError && (
               <div className="settings-modal__error">{commandError}</div>
             )}
@@ -358,11 +410,11 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
           files={activeTab.files}
           annotations={activeTab.annotations}
           diffMode={diffMode}
+          diffFont={diffFont}
           collapsedFiles={activeTab.collapsedFiles}
           onToggleCollapsed={toggleCollapsed}
           viewedFiles={activeTab.viewedFiles}
           onToggleViewed={toggleViewed}
-          shiftKeyHeld={shiftKeyHeld}
           addAnnotation={addAnnotation}
           updateComment={(annotationId, comment) => {
             updateActiveTab((tab) => ({

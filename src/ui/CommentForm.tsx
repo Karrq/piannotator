@@ -4,11 +4,12 @@ interface CommentFormProps {
   label: string;
   initialComment?: string;
   submitLabel?: string;
+  selectedLinesText?: string;
   onSubmit: (comment: string) => void;
   onCancel: () => void;
 }
 
-export function CommentForm({ label, initialComment = "", submitLabel = "Add comment", onSubmit, onCancel }: CommentFormProps) {
+export function CommentForm({ label, initialComment = "", submitLabel = "Add comment", selectedLinesText, onSubmit, onCancel }: CommentFormProps) {
   const [comment, setComment] = useState(initialComment);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -49,6 +50,18 @@ export function CommentForm({ label, initialComment = "", submitLabel = "Add com
         <button type="button" onClick={onCancel}>
           Cancel
         </button>
+        {selectedLinesText && (
+          <button
+            type="button"
+            className="comment-form__suggest"
+            onClick={() => {
+              const template = "```suggestion\n" + selectedLinesText + "\n```";
+              setComment((prev) => prev ? prev + "\n" + template : template);
+            }}
+          >
+            Suggest
+          </button>
+        )}
         <button
           type="button"
           className="comment-form__submit"

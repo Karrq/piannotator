@@ -1,89 +1,84 @@
-import { DiffFile } from "@git-diff-view/react";
-import type { ReviewFile, Annotation } from "../types.js";
+import type { DiffLineAnnotation, AnnotationSide } from "@pierre/diffs";
+import type { Annotation, AnnotationLineSource } from "../types.js";
 
-export interface DiffThreadData {
-  comments: Annotation[];
+export function toAnnotationSide(lineSource: AnnotationLineSource): AnnotationSide {
+  return lineSource === "old" ? "deletions" : "additions";
 }
 
-export interface DiffExtendData {
-  oldFile?: Record<string, { data: DiffThreadData }>;
-  newFile?: Record<string, { data: DiffThreadData }>;
+export function fromAnnotationSide(side: AnnotationSide): AnnotationLineSource {
+  return side === "deletions" ? "old" : "new";
 }
 
-export function createDiffViewFile(file: ReviewFile): DiffFile {
-  const diffFile = DiffFile.createInstance({
-    oldFile: {
-      fileName: file.oldPath === "/dev/null" ? null : file.oldPath,
-      fileLang: detectFileLanguage(file.oldPath === "/dev/null" ? file.newPath : file.oldPath),
-      content: null
-    },
-    newFile: {
-      fileName: file.newPath === "/dev/null" ? null : file.newPath,
-      fileLang: detectFileLanguage(file.newPath === "/dev/null" ? file.oldPath : file.newPath),
-      content: null
-    },
-    hunks: [file.rawDiff]
-  });
-
-  diffFile.initTheme("dark");
-  diffFile.init();
-  diffFile.buildUnifiedDiffLines();
-  diffFile.buildSplitDiffLines();
-  return diffFile;
+/**
+ * Build one lineAnnotation entry per unique (lineNumber, side) pair.
+ * Pierre renders a slot per entry, so duplicates cause repeated rendering.
+ * The metadata carries the first matching annotation; renderAnnotation should
+ * filter the full annotations list by position to get all of them.
+ */
+export function buildLineAnnotations(annotations: Annotation[]): DiffLineAnnotation<Annotation>[] {
+  const seen = new Set<string>();
+  const result: DiffLineAnnotation<Annotation>[] = [];
+  for (const a of annotations) {
+    const line = a.lineEnd ?? a.lineStart;
+    const side = toAnnotationSide(a.lineSource);
+    const key = `${side}:${line}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({ side, lineNumber: line, metadata: a });
+  }
+  return result;
 }
 
-export function buildDiffExtendData(annotations: Annotation[]): DiffExtendData {
-  const extendData: DiffExtendData = {
-    oldFile: {},
-    newFile: {}
-  };
+/**
+ * Extract lines from a raw unified diff for a given line range and side.
+ * Returns the text content of those lines, or undefined if not found.
+ */
+export function extractLinesFromDiff(
+  rawDiff: string,
+  lineStart: number,
+  lineEnd: number,
+  lineSource: AnnotationLineSource
+): string | undefined {
+  const lines = rawDiff.split("\n");
+  const result: string[] = [];
+  let oldLine = 0;
+  let newLine = 0;
 
-  for (const annotation of annotations) {
-    const target = annotation.lineSource === "old" ? extendData.oldFile : extendData.newFile;
-    const key = String(annotation.lineStart);
-    const existing = target?.[key];
-    const comments = existing ? [...existing.data.comments, annotation] : [annotation];
-    if (target) {
-      target[key] = { data: { comments } };
+  for (const line of lines) {
+    // Parse hunk header to get starting line numbers
+    const hunkMatch = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunkMatch) {
+      oldLine = parseInt(hunkMatch[1], 10);
+      newLine = parseInt(hunkMatch[2], 10);
+      continue;
+    }
+
+    // Skip diff headers
+    if (line.startsWith("diff ") || line.startsWith("index ") || line.startsWith("--- ") || line.startsWith("+++ ")) {
+      continue;
+    }
+
+    if (line.startsWith("-")) {
+      if (lineSource === "old" && oldLine >= lineStart && oldLine <= lineEnd) {
+        result.push(line.slice(1));
+      }
+      oldLine++;
+    } else if (line.startsWith("+")) {
+      if (lineSource === "new" && newLine >= lineStart && newLine <= lineEnd) {
+        result.push(line.slice(1));
+      }
+      newLine++;
+    } else if (line.startsWith(" ") || line === "") {
+      // Context line (or empty trailing line)
+      if (lineSource === "old" && oldLine >= lineStart && oldLine <= lineEnd) {
+        result.push(line.startsWith(" ") ? line.slice(1) : line);
+      } else if (lineSource === "new" && newLine >= lineStart && newLine <= lineEnd) {
+        result.push(line.startsWith(" ") ? line.slice(1) : line);
+      }
+      oldLine++;
+      newLine++;
     }
   }
 
-  if (Object.keys(extendData.oldFile ?? {}).length === 0) {
-    delete extendData.oldFile;
-  }
-
-  if (Object.keys(extendData.newFile ?? {}).length === 0) {
-    delete extendData.newFile;
-  }
-
-  return extendData;
-}
-
-function detectFileLanguage(filePath: string): string {
-  const extension = filePath.split(".").pop()?.toLowerCase() ?? "";
-  switch (extension) {
-    case "ts":
-      return "typescript";
-    case "tsx":
-      return "tsx";
-    case "js":
-      return "javascript";
-    case "jsx":
-      return "jsx";
-    case "json":
-      return "json";
-    case "md":
-      return "markdown";
-    case "css":
-      return "css";
-    case "html":
-      return "xml";
-    case "sh":
-      return "bash";
-    case "yml":
-    case "yaml":
-      return "yaml";
-    default:
-      return "plaintext";
-  }
+  return result.length > 0 ? result.join("\n") : undefined;
 }

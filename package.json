@@ -22,9 +22,7 @@
     "@sinclair/typebox": "*"
   },
   "dependencies": {
-    "@git-diff-view/file": "^0.1.2",
-    "@git-diff-view/lowlight": "^0.1.2",
-    "@git-diff-view/react": "^0.1.2",
+    "@pierre/diffs": "^1.1.3",
     "@primer/octicons-react": "^19.23.0",
     "glimpseui": "^0.3.7",
     "react": "^19.2.0",

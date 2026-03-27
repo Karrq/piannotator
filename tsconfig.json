@@ -15,5 +15,6 @@
     "types": ["node"],
     "outDir": "build"
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "scripts/**/*.ts", "esbuild.config.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "scripts/**/*.ts", "esbuild.config.ts"],
+  "exclude": ["scripts/test-glimpse.ts"]
 }

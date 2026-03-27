@@ -1,33 +1,26 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { DiffModeEnum } from "@git-diff-view/react";
-import type { Annotation, AnnotationDraft, AnnotationLineSource, ReviewFile } from "../types.js";
+import type { Annotation, AnnotationDraft, ReviewFile } from "../types.js";
 import { DiffPanel } from "./DiffPanel.js";
 import { FileTree } from "./FileTree.js";
 import { buildFileTree, sortFilesForTreeOrder } from "./file-tree-data.js";
-import type { RangeAnchor } from "./range-selection.js";
 
 interface ReviewViewProps {
   files: ReviewFile[];
   annotations: Annotation[];
-  diffMode: DiffModeEnum;
+  diffMode: "unified" | "split";
+  diffFont?: string;
   collapsedFiles: Set<string>;
   onToggleCollapsed: (filePath: string) => void;
   viewedFiles: Set<string>;
   onToggleViewed: (filePath: string) => void;
-  shiftKeyHeld: boolean;
   addAnnotation: (draft: AnnotationDraft) => void;
   updateComment: (annotationId: string, comment: string) => void;
   deleteAnnotation: (annotationId: string) => void;
 }
 
-interface FileScopedRangeAnchor extends RangeAnchor {
-  filePath: string;
-}
-
-export function ReviewView({ files, annotations, diffMode, collapsedFiles, onToggleCollapsed, viewedFiles, onToggleViewed, shiftKeyHeld, addAnnotation, updateComment, deleteAnnotation }: ReviewViewProps) {
+export function ReviewView({ files, annotations, diffMode, diffFont, collapsedFiles, onToggleCollapsed, viewedFiles, onToggleViewed, addAnnotation, updateComment, deleteAnnotation }: ReviewViewProps) {
   const orderedFiles = useMemo(() => sortFilesForTreeOrder(files), [files]);
   const [activeFilePath, setActiveFilePath] = useState(orderedFiles[0]?.displayPath ?? "");
-  const [rangeAnchor, setRangeAnchor] = useState<FileScopedRangeAnchor | null>(null);
   const panelRefs = useRef(new Map<string, HTMLDivElement>());
   const pendingScrollTargetRef = useRef<string | null>(null);
   const pendingScrollTimerRef = useRef<number | null>(null);
@@ -98,12 +91,6 @@ export function ReviewView({ files, annotations, diffMode, collapsedFiles, onTog
       }
     }
   }, [diffMode, activeFilePath]);
-
-  useEffect(() => {
-    if (rangeAnchor && !orderedFiles.some((file) => file.displayPath === rangeAnchor.filePath)) {
-      setRangeAnchor(null);
-    }
-  }, [orderedFiles, rangeAnchor]);
 
   useEffect(() => {
     window.addEventListener("scroll", schedulePendingScrollFinish, { passive: true });
@@ -241,16 +228,12 @@ export function ReviewView({ files, annotations, diffMode, collapsedFiles, onTog
             <DiffPanel
               file={file}
               annotations={annotationsByFile.get(file.displayPath) ?? []}
-              diffMode={diffMode}
+              diffStyle={diffMode}
+              diffFont={diffFont}
               collapsed={collapsedFiles.has(file.displayPath)}
               onToggleCollapse={() => onToggleCollapsed(file.displayPath)}
               isViewed={viewedFiles.has(file.displayPath)}
               onToggleViewed={() => onToggleViewed(file.displayPath)}
-              shiftKeyHeld={shiftKeyHeld}
-              rangeAnchor={toLocalAnchor(rangeAnchor, file.displayPath)}
-              onRangeAnchorChange={(nextAnchor) => {
-                setRangeAnchor(nextAnchor ? { ...nextAnchor, filePath: file.displayPath } : null);
-              }}
               onAddAnnotation={addAnnotation}
               onUpdateAnnotation={updateComment}
               onDeleteAnnotation={deleteAnnotation}
@@ -280,13 +263,4 @@ function toFileSectionId(filePath: string): string {
   return `file-${filePath.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
 }
 
-function toLocalAnchor(anchor: FileScopedRangeAnchor | null, filePath: string): RangeAnchor | null {
-  if (!anchor || anchor.filePath !== filePath) {
-    return null;
-  }
 
-  return {
-    lineNumber: anchor.lineNumber,
-    lineSource: anchor.lineSource as AnnotationLineSource
-  };
-}

@@ -37,11 +37,13 @@ const api = {
   registerMessageRenderer(_customType: string, _renderer: any) {},
   async exec(_command: string, args: string[]) {
     const shellCommand = args[1];
-    if (shellCommand === "emit-diff") {
+    // Commands may be wrapped with full-context preamble (git/jj function overrides)
+    const unwrapped = shellCommand.replace(/^.*?;\s*(?=\S)/, "").replace(/^.*?;\s*(?=\S)/, "").replace(/^.*?;\s*/, "");
+    if (unwrapped === "emit-diff" || shellCommand.endsWith("emit-diff")) {
       return { stdout: diffFixture, stderr: "", code: 0 };
     }
 
-    if (shellCommand === "emit-stderr") {
+    if (unwrapped === "emit-stderr" || shellCommand.endsWith("emit-stderr")) {
       return { stdout: "", stderr: "only stderr", code: 1 };
     }
 

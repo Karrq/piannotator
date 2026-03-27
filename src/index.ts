@@ -236,7 +236,7 @@ export default function (pi: ExtensionAPI) {
 
     const clientResult = await reviewClient.requestReview(clientRequest, {
       onRerunCommand: async (command: string) => {
-        const result = await pi.exec("sh", ["-lc", command], { signal });
+        const result = await pi.exec("sh", ["-lc", wrapWithFullContext(command)], { signal });
         const content = combineCommandOutput(result.stdout, result.stderr, result.code);
         const newFiles = isUnifiedDiff(content) ? parseDiff(content) : [];
         return { content, files: newFiles };
@@ -292,7 +292,8 @@ export default function (pi: ExtensionAPI) {
     params: RequestInput,
     signal: AbortSignal | undefined
   ): Promise<ReviewSourceCommand> {
-    const result = await pi.exec("sh", ["-lc", params.command], { signal });
+    const command = wrapWithFullContext(params.command);
+    const result = await pi.exec("sh", ["-lc", command], { signal });
     const content = combineCommandOutput(result.stdout, result.stderr, result.code);
     return {
       kind: "command",
@@ -613,6 +614,19 @@ function getLastAssistantText(ctx: ExtensionContext): string | null {
   }
 
   return null;
+}
+
+/**
+ * Wraps a shell command with function overrides that inject full diff context.
+ * git and jj both get config overrides so expand-unchanged works in the UI.
+ * Harmless if the command doesn't use git or jj.
+ */
+function wrapWithFullContext(command: string): string {
+  const preamble = [
+    `git(){ command git -c diff.context=999999999 "$@"; }`,
+    `jj(){ command jj --config 'diff.git.context=999999999' "$@"; }`,
+  ].join("; ");
+  return `${preamble}; ${command}`;
 }
 
 function createReviewClient(): ReviewClient {
