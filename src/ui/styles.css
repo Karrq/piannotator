@@ -221,7 +221,7 @@ button:disabled {
 }
 
 .review-panel--diff {
-  overflow: hidden;
+  overflow: visible;
 }
 
 .review-panel__header {
@@ -231,6 +231,14 @@ button:disabled {
   gap: 1rem;
   padding: 1rem;
   border-bottom: 1px solid #30363d;
+}
+
+.review-panel__header--sticky {
+  position: sticky;
+  top: 68px;
+  z-index: 10;
+  background: #161b22;
+  border-radius: 10px 10px 0 0;
 }
 
 .review-panel__title {

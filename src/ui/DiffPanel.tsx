@@ -39,7 +39,7 @@ export function DiffPanel({
 
   return (
     <section className="review-panel review-panel--diff">
-      <div className="review-panel__header">
+      <div className="review-panel__header review-panel__header--sticky">
         <div>
           <div className="review-panel__title">{file.displayPath}</div>
           <div className="review-panel__meta">
