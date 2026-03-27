@@ -87,6 +87,13 @@ node build/scripts/test-glimpse.js
 
 Set `PIANNOTATOR_REVIEW_CLIENT=stub` to use a deterministic stub client for development without opening Glimpse windows.
 
+## Similar tools
+
+- [Lumen](https://github.com/jnsahaj/lumen) is a terminal diff viewer with strong keyboard-driven review, annotations, and export or copy flows for composing the review elsewhere; I only found it after starting Piannotator, and if I had seen it earlier I might have explored integrating it into pi via a slash command or agent tool instead.
+- [Hunk](https://github.com/modem-dev/hunk/) is aimed at agent-authored changesets and supports inline agent or AI annotations, so it is mainly about the agent surfacing review context to the human rather than the human sending structured review feedback back into the agent.
+- [Plannotator](https://github.com/backnotprop/plannotator) was a direct inspiration, especially around visual annotation for agent workflows, but its documented Pi code review flow is centered on `/plannotator-review` over current git changes in a browser UI, while Piannotator is built around arbitrary diff commands returned to pi as structured tool output.
+- [pi-annotated-reply](https://github.com/omaclaren/pi-annotated-reply) takes a text and editor-first approach, loading annotated versions of the last reply, a file, or the current git diff into pi's editor, while Piannotator prefers a single visual diff review flow over inline annotation syntax and many command variants.
+
 ## License
 
 MIT
