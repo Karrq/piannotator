@@ -33,6 +33,8 @@ const api = {
   registerTool(tool: ToolDefinition) {
     tools.set(tool.name, tool);
   },
+  registerCommand(_name: string, _options: any) {},
+  registerMessageRenderer(_customType: string, _renderer: any) {},
   async exec(_command: string, args: string[]) {
     const shellCommand = args[1];
     if (shellCommand === "emit-diff") {

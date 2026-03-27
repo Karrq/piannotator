@@ -3,7 +3,7 @@ import type { ExtensionAPI, ExtensionContext, Theme } from "@mariozechner/pi-cod
 import { Text } from "@mariozechner/pi-tui";
 import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
-import { extractDiffContext, isUnifiedDiff, parseDiff } from "./diff-parser.js";
+import { extractDiffContext, isUnifiedDiff, parseDiff, textToDiff } from "./diff-parser.js";
 import type { ReviewClient } from "./review-client.js";
 import { GlimpseReviewClient } from "./review-client-glimpse.js";
 import { StubReviewClient } from "./review-client-stub.js";
@@ -68,26 +68,30 @@ export default function (pi: ExtensionAPI) {
     nextReviewId = 1;
 
     for (const entry of ctx.sessionManager.getBranch()) {
-      if (entry.type !== "message") {
+      // Tool results from the annotate tool
+      if (entry.type === "message") {
+        const message = entry.message;
+        if (message.role === "toolResult" && message.toolName === "annotate") {
+          const details = message.details as AnnotateToolDetails | undefined;
+          if (details?.reviews !== undefined) {
+            reviews = details.reviews;
+          }
+          if (details?.nextReviewId !== undefined) {
+            nextReviewId = details.nextReviewId;
+          }
+        }
         continue;
       }
 
-      const message = entry.message;
-      if (message.role !== "toolResult" || message.toolName !== "annotate") {
-        continue;
-      }
-
-      const details = message.details as AnnotateToolDetails | undefined;
-      if (!details) {
-        continue;
-      }
-
-      if (details.reviews !== undefined) {
-        reviews = details.reviews;
-      }
-
-      if (details.nextReviewId !== undefined) {
-        nextReviewId = details.nextReviewId;
+      // Custom messages from the /annotate slash command
+      if (entry.type === "custom_message" && entry.customType === "annotate") {
+        const details = entry.details as AnnotateState | undefined;
+        if (details?.reviews !== undefined) {
+          reviews = details.reviews;
+        }
+        if (details?.nextReviewId !== undefined) {
+          nextReviewId = details.nextReviewId;
+        }
       }
     }
   };
@@ -144,8 +148,82 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  async function handleRequest(params: RequestInput, signal: AbortSignal | undefined) {
-    const source = await loadReviewSource(params, signal);
+  // /annotate slash command
+  pi.registerCommand("annotate", {
+    description: "Open annotation review UI for a command or the last assistant message",
+    handler: async (args, ctx) => {
+      let source: ReviewSourceCommand;
+
+      if (args.trim()) {
+        const execResult = await pi.exec("sh", ["-lc", args.trim()]);
+        const content = combineCommandOutput(execResult.stdout, execResult.stderr, execResult.code);
+        source = {
+          kind: "command",
+          title: args.trim(),
+          command: args.trim(),
+          content,
+          exitCode: execResult.code
+        };
+      } else {
+        const assistantText = getLastAssistantText(ctx);
+        if (!assistantText) {
+          ctx.ui.notify("No assistant message found to annotate", "warning");
+          return;
+        }
+        const diffContent = textToDiff(assistantText, "assistant-message");
+        source = {
+          kind: "command",
+          title: "assistant message",
+          command: "",
+          content: diffContent,
+          exitCode: 0
+        };
+      }
+
+      const result = await executeReview(source);
+
+      if (result.cancelled) {
+        ctx.ui.notify("Review cancelled", "info");
+        return;
+      }
+
+      pi.sendMessage({
+        customType: "annotate",
+        content: formatRequestResult(result.review),
+        display: true,
+        details: snapshotState()
+      }, {
+        triggerTurn: true
+      });
+    }
+  });
+
+  // Custom TUI renderer for /annotate command results
+  pi.registerMessageRenderer("annotate", (message, options, theme) => {
+    if (options.expanded) {
+      const text = typeof message.content === "string" ? message.content : "";
+      return new Text(text, 0, 0);
+    }
+
+    const details = message.details as AnnotateState | undefined;
+    const lastReview = details?.reviews?.[details.reviews.length - 1];
+    if (!lastReview) {
+      return new Text(theme.fg("dim", "Review (no data)"), 0, 0);
+    }
+
+    return new Text(
+      theme.fg("success", "~ ") +
+        theme.fg("toolTitle", theme.bold("annotate ")) +
+        theme.fg("muted", `${lastReview.id} with ${lastReview.annotations.length} annotation${lastReview.annotations.length === 1 ? "" : "s"}`),
+      0,
+      0
+    );
+  });
+
+  async function executeReview(
+    source: ReviewSourceCommand,
+    signal?: AbortSignal
+  ): Promise<{ review: Review; cancelled: false } | { cancelled: true }> {
     const files = isUnifiedDiff(source.content) ? parseDiff(source.content) : [];
     const clientRequest: ReviewClientRequest = {
       title: source.title,
@@ -164,7 +242,7 @@ export default function (pi: ExtensionAPI) {
     });
 
     if (clientResult === null) {
-      return createResult("request", "User cancelled the review.", { cancelled: true });
+      return { cancelled: true };
     }
 
     const review = createReview(source, files, clientResult.annotations, clientResult.overallComment);
@@ -174,8 +252,18 @@ export default function (pi: ExtensionAPI) {
     }
 
     reviews.push(review);
+    return { review, cancelled: false };
+  }
 
-    return createResult("request", formatRequestResult(review), { review });
+  async function handleRequest(params: RequestInput, signal: AbortSignal | undefined) {
+    const source = await loadReviewSource(params, signal);
+    const result = await executeReview(source, signal);
+
+    if (result.cancelled) {
+      return createResult("request", "User cancelled the review.", { cancelled: true });
+    }
+
+    return createResult("request", formatRequestResult(result.review), { review: result.review });
   }
 
   function handleDetail(params: DetailInput) {
@@ -484,6 +572,29 @@ function previewText(value: string, maxLength: number): string {
   }
 
   return `${normalized.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+}
+
+function getLastAssistantText(ctx: ExtensionContext): string | null {
+  const entries = ctx.sessionManager.getBranch();
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (entry.type !== "message") {
+      continue;
+    }
+
+    const message = entry.message;
+    if (message.role !== "assistant") {
+      continue;
+    }
+
+    const text = message.content
+      .filter((part) => part.type === "text")
+      .map((part) => ("text" in part ? part.text : ""))
+      .join("\n");
+    return text.trim() || null;
+  }
+
+  return null;
 }
 
 function createReviewClient(): ReviewClient {
