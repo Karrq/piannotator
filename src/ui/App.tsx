@@ -167,7 +167,7 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
       if (event.metaKey && !event.shiftKey) {
         switch (event.key) {
           case "c": {
-            const sel = window.getSelection()?.toString();
+            const sel = getSelectedText();
             if (sel) navigator.clipboard.writeText(sel);
             event.preventDefault();
             return;
@@ -187,7 +187,7 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
             return;
           }
           case "x": {
-            const sel = window.getSelection()?.toString();
+            const sel = getSelectedText();
             if (sel) navigator.clipboard.writeText(sel);
             document.execCommand("delete");
             event.preventDefault();
@@ -471,4 +471,40 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
       </main>
     </div>
   );
+}
+
+/**
+ * Get selected text, including from inside Shadow DOM (e.g. @pierre/diffs).
+ * Falls back to getComposedRanges() when the regular selection toString()
+ * returns empty - which happens when the selection is inside a shadow root.
+ */
+function getSelectedText(): string {
+  const sel = document.getSelection();
+  if (!sel || sel.rangeCount === 0) return "";
+
+  // Works for normal DOM selections
+  const text = sel.toString();
+  if (text) return text;
+
+  // Shadow DOM: use getComposedRanges (Safari 17+/WKWebView)
+  if ("getComposedRanges" in sel && typeof (sel as any).getComposedRanges === "function") {
+    const shadowRoots: ShadowRoot[] = [];
+    for (const el of Array.from(document.querySelectorAll("*"))) {
+      if (el.shadowRoot) shadowRoots.push(el.shadowRoot);
+    }
+    try {
+      const ranges: StaticRange[] = (sel as any).getComposedRanges(...shadowRoots);
+      if (ranges.length > 0) {
+        const r = ranges[0];
+        const range = document.createRange();
+        range.setStart(r.startContainer, r.startOffset);
+        range.setEnd(r.endContainer, r.endOffset);
+        return range.cloneContents().textContent ?? "";
+      }
+    } catch {
+      // getComposedRanges not supported or threw - fall through
+    }
+  }
+
+  return "";
 }
