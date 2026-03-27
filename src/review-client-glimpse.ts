@@ -105,7 +105,6 @@ async function promptWithReloadableFile(title: string, html: string, options?: R
     win = open("", {
       ...REVIEW_WINDOW_OPTIONS,
       title,
-      autoClose: true,
       hidden: true
     });
   } catch (error) {
@@ -174,6 +173,7 @@ async function promptWithReloadableFile(title: string, html: string, options?: R
         return;
       }
       if (msg.type === "submit" || msg.type === "cancel") {
+        win.close();
         resolveOnce(msg);
       }
     });
