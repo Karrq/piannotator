@@ -5,6 +5,7 @@ import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
 import { extractDiffContext, isUnifiedDiff, parseDiff, textToDiff } from "./diff-parser.js";
 import type { ReviewClient } from "./review-client.js";
+import { CmuxReviewClient } from "./review-client-cmux.js";
 import { GlimpseReviewClient } from "./review-client-glimpse.js";
 import { StubReviewClient } from "./review-client-stub.js";
 import {
@@ -63,7 +64,7 @@ type DetailInput = {
 export default function (pi: ExtensionAPI) {
   let reviews: Review[] = [];
   let nextReviewId = 1;
-  const reviewClient: ReviewClient = createReviewClient();
+  const reviewClient: ReviewClient = createReviewClient(pi);
 
   const reconstructState = (ctx: ExtensionContext) => {
     reviews = [];
@@ -628,10 +629,24 @@ function wrapWithFullContext(command: string): string {
   return `${preamble}; ${command}`;
 }
 
-function createReviewClient(): ReviewClient {
-  if (process.env.PIANNOTATOR_REVIEW_CLIENT === "stub") {
+function createReviewClient(pi: ExtensionAPI): ReviewClient {
+  const explicitClient = process.env.PIANNOTATOR_REVIEW_CLIENT;
+
+  if (explicitClient === "stub") {
     return new StubReviewClient();
   }
 
+  if (explicitClient === "glimpse") {
+    return new GlimpseReviewClient();
+  }
+
+  if (isCmux()) {
+    return new CmuxReviewClient(pi);
+  }
+
   return new GlimpseReviewClient();
+}
+
+function isCmux(): boolean {
+  return Boolean(process.env.CMUX_WORKSPACE_ID && process.env.CMUX_SURFACE_ID);
 }

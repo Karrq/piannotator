@@ -65,12 +65,24 @@ export class GlimpseReviewClient implements ReviewClient {
   }
 }
 
-export function buildReviewWindowHtml(template: string, payload: ReviewBridgeInit): string {
+export interface BuildReviewWindowHtmlOptions {
+  extraBootstrapScripts?: string[];
+}
+
+export function buildReviewWindowHtml(
+  template: string,
+  payload: ReviewBridgeInit,
+  options: BuildReviewWindowHtmlOptions = {}
+): string {
   if (!template.includes(REVIEW_UI_BOOTSTRAP_MARKER)) {
     throw new Error("Review UI template is malformed: missing bootstrap marker. Run npm run build again.");
   }
 
-  const bootstrap = `<script>window.__PIANNOTATOR_INIT__ = ${serializeForInlineScript(payload)};<\/script>`;
+  const scripts = [
+    `window.__PIANNOTATOR_INIT__ = ${serializeForInlineScript(payload)};`,
+    ...(options.extraBootstrapScripts ?? [])
+  ];
+  const bootstrap = scripts.map((script) => `<script>${script}<\/script>`).join("");
   return template.replace(REVIEW_UI_BOOTSTRAP_MARKER, bootstrap);
 }
 
