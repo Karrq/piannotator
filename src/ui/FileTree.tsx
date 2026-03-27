@@ -1,3 +1,4 @@
+import { ChevronDownIcon, ChevronRightIcon, FileDirectoryFillIcon, FileIcon } from "@primer/octicons-react";
 import { useEffect, useState } from "react";
 import { Tree, type NodeRendererProps } from "react-arborist";
 import type { FileTreeNodeData } from "./file-tree-data.js";
@@ -67,7 +68,17 @@ function FileTreeNode({ node, style, onSelectFile }: FileTreeNodeProps) {
         }}
       >
         <span className="file-tree-node__label">
-          {isDirectory ? (node.isOpen ? "▾" : "▸") : "•"} {node.data.name}
+          {isDirectory ? (
+            <span className="file-tree-node__chevron" aria-hidden="true">
+              {node.isOpen ? <ChevronDownIcon size={16} /> : <ChevronRightIcon size={16} />}
+            </span>
+          ) : (
+            <span className="file-tree-node__chevron" aria-hidden="true" />
+          )}
+          <span className={`file-tree-node__icon ${isDirectory ? "file-tree-node__icon--folder" : "file-tree-node__icon--file"}`}>
+            {isDirectory ? <FileDirectoryFillIcon size={16} /> : <FileIcon size={16} />}
+          </span>
+          <span className="file-tree-node__name">{node.data.name}</span>
         </span>
         {!isDirectory ? (
           <span className="file-tree-node__stats">

@@ -47,9 +47,6 @@ export function TextReview({ content, annotations, shiftKeyHeld, onAddAnnotation
         </div>
       </div>
       <div className="review-panel__body review-panel__body--text">
-        <div className="review-hint">
-          Click the line button to comment. Hold Shift and click another line to turn the active anchor into a range.
-        </div>
         {hasHiddenLines ? (
           <div className="review-hint review-hint--warning">
             Showing the first {MAX_RENDERED_TEXT_LINES.toLocaleString()} lines for responsiveness. {lines.length - MAX_RENDERED_TEXT_LINES} later line
