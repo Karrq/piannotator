@@ -162,8 +162,8 @@ export default function (pi: ExtensionAPI) {
       return renderCall(args as AnnotateParams, theme);
     },
 
-    renderResult(result, _options, theme) {
-      return renderResult(result.details as AnnotateToolDetails | undefined, result.content, theme);
+    renderResult(result, options, theme) {
+      return renderResult(result.details as AnnotateToolDetails | undefined, result.content, options.expanded, theme);
     }
   });
 
@@ -541,8 +541,8 @@ function renderCall(args: AnnotateParams, theme: Theme) {
   }
 }
 
-function renderResult(details: AnnotateToolDetails | undefined, content: Array<{ type: string; text?: string }>, theme: Theme) {
-  if (!details) {
+function renderResult(details: AnnotateToolDetails | undefined, content: Array<{ type: string; text?: string }>, expanded: boolean, theme: Theme) {
+  if (!details || expanded) {
     const text = content[0]?.type === "text" ? content[0].text ?? "" : "";
     return new Text(text, 0, 0);
   }
