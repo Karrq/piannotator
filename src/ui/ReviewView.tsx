@@ -207,7 +207,7 @@ export function ReviewView({ files, annotations, diffMode, collapsedFiles, onTog
   };
 
   const gridStyle = showFileTree
-    ? { gridTemplateColumns: treeCollapsed ? "32px minmax(0, 1fr)" : `${treeWidth}px minmax(0, 1fr)` }
+    ? { gridTemplateColumns: treeCollapsed ? "48px minmax(0, 1fr)" : `${treeWidth}px minmax(0, 1fr)` }
     : undefined;
 
   return (

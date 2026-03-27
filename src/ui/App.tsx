@@ -89,6 +89,20 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
     setTabs((prev) => prev.map((tab, i) => (i === activeTabIndex ? updater(tab) : tab)));
   }
 
+  function deleteTab(index: number) {
+    setTabs((prev) => {
+      if (prev.length <= 1) return prev;
+      const next = prev.filter((_, i) => i !== index);
+      // Adjust active tab index if needed
+      if (activeTabIndex >= next.length) {
+        setActiveTabIndex(next.length - 1);
+      } else if (activeTabIndex > index) {
+        setActiveTabIndex(activeTabIndex - 1);
+      }
+      return next;
+    });
+  }
+
   const dismissConfirmation = () => setPendingFinalAction(null);
 
   const submitReview = () => {
@@ -317,6 +331,35 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
             </div>
             {commandError && (
               <div className="settings-modal__error">{commandError}</div>
+            )}
+            {tabs.length > 1 && (
+              <div className="settings-modal__field">
+                <label className="settings-modal__label">Versions</label>
+                <div className="settings-modal__versions">
+                  {tabs.map((tab, i) => (
+                    <div key={tab.id} className={`settings-modal__version${i === activeTabIndex ? " settings-modal__version--active" : ""}`}>
+                      <span className="settings-modal__version-label">
+                        <span className="settings-modal__version-num">{i + 1}</span>
+                        <span className="settings-modal__version-cmd" title={tab.command || "(no command)"}>
+                          {tab.command || "(no command)"}
+                        </span>
+                        {tab.annotations.length > 0 && (
+                          <span className="settings-modal__version-badge">{tab.annotations.length}</span>
+                        )}
+                      </span>
+                      <button
+                        type="button"
+                        className="settings-modal__version-delete"
+                        onClick={() => deleteTab(i)}
+                        aria-label={`Delete version ${i + 1}`}
+                        title="Delete version"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
             <div className="review-modal__actions">
               <button type="button" onClick={() => { setShowSettings(false); setCommandError(null); setPendingRerun(false); }}>

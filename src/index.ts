@@ -311,13 +311,17 @@ export default function (pi: ExtensionAPI) {
   ): Review {
     const reviewId = `review-${nextReviewId++}`;
 
-    // Flatten all annotations across versions, tagging each with versionIndex
+    // Only keep versions that have annotations
+    const keptVersions = versions.filter((v) => v.annotations.length > 0);
+
     const allDrafts: AnnotationDraft[] = [];
     const reviewVersions: ReviewVersion[] = [];
 
-    for (let vi = 0; vi < versions.length; vi++) {
-      const version = versions[vi];
-      reviewVersions.push({ command: version.command, files: vi === 0 ? initialFiles : [] });
+    for (let vi = 0; vi < keptVersions.length; vi++) {
+      const version = keptVersions[vi];
+      // Find original index to get correct files
+      const originalIndex = versions.indexOf(version);
+      reviewVersions.push({ command: version.command, files: originalIndex === 0 ? initialFiles : [] });
       for (const draft of version.annotations) {
         allDrafts.push({ ...draft, versionIndex: vi });
       }

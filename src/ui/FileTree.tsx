@@ -38,10 +38,7 @@ export function FileTree({ nodes, activeFilePath, onSelectFile, collapsed, onTog
   return (
     <aside className="file-tree-panel">
       <div className="file-tree-panel__header">
-        <div>
-          <div className="review-panel__title">Files</div>
-          <div className="review-panel__meta">{nodes.length} top-level items</div>
-        </div>
+        <div className="review-panel__title">Files</div>
         {onToggleCollapse && (
           <button
             type="button"
