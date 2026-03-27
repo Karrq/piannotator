@@ -78,8 +78,8 @@ export function ReviewView({ files, annotations, diffMode, collapsedFiles, onTog
           const rect = element.getBoundingClientRect();
           // Only scroll if the header is above the viewport (content shifted up)
           if (rect.top < 68) {
-            const top = Math.max(0, window.scrollY + rect.top - 96);
-            window.scrollTo({ top, behavior: "instant" });
+            const top = Math.max(0, window.scrollY + rect.top - 68);
+            window.scrollTo({ top, behavior: "smooth" });
           }
         }
         break;
@@ -94,8 +94,8 @@ export function ReviewView({ files, annotations, diffMode, collapsedFiles, onTog
       prevDiffModeRef.current = diffMode;
       const element = panelRefs.current.get(activeFilePath);
       if (element) {
-        const top = Math.max(0, window.scrollY + element.getBoundingClientRect().top - 96);
-        window.scrollTo({ top, behavior: "instant" });
+        const top = Math.max(0, window.scrollY + element.getBoundingClientRect().top - 68);
+        window.scrollTo({ top, behavior: "smooth" });
       }
     }
   }, [diffMode, activeFilePath]);
@@ -231,7 +231,7 @@ export function ReviewView({ files, annotations, diffMode, collapsedFiles, onTog
       return;
     }
 
-    const top = Math.max(0, window.scrollY + element.getBoundingClientRect().top - 96);
+    const top = Math.max(0, window.scrollY + element.getBoundingClientRect().top - 68);
     window.scrollTo({ top, behavior: "smooth" });
   }
 }
