@@ -340,6 +340,7 @@ button:disabled {
   min-width: 0;
 }
 
+/* Collapse chevron injected into pierre's header-prefix slot */
 .diff-panel__collapse-btn {
   display: inline-flex;
   align-items: center;
@@ -360,7 +361,18 @@ button:disabled {
   color: #e6edf3;
 }
 
+/* Annotation count + viewed toggle are direct flex children of pierre's
+   [data-metadata] via display:contents on the slot wrapper.
+   Order: annotation-count (0) < +/- counts (1, via unsafeCSS) < viewed (2) */
+.diff-panel__annotation-count {
+  order: 0;
+  color: #8b949e;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
 .diff-panel__viewed-toggle {
+  order: 2;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;

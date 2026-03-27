@@ -3,6 +3,7 @@ import type { Annotation, AnnotationDraft, ReviewFile } from "../types.js";
 import { DiffPanel } from "./DiffPanel.js";
 import { FileTree } from "./FileTree.js";
 import { buildFileTree, sortFilesForTreeOrder } from "./file-tree-data.js";
+import { WindowVirtualizer } from "./WindowVirtualizer.js";
 
 interface ReviewViewProps {
   files: ReviewFile[];
@@ -68,12 +69,17 @@ export function ReviewView({ files, annotations, diffMode, diffFont, collapsedFi
       if (!prev.has(filePath)) {
         const element = panelRefs.current.get(filePath);
         if (element) {
-          const rect = element.getBoundingClientRect();
-          // Only scroll if the header is above the viewport (content shifted up)
-          if (rect.top < 68) {
-            const top = Math.max(0, window.scrollY + rect.top - 68);
-            window.scrollTo({ top, behavior: "smooth" });
-          }
+          // Wait for the virtualizer's scrollFix (runs in rAF) to settle,
+          // then ensure the collapsed file's header is still visible.
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              const rect = element.getBoundingClientRect();
+              if (rect.top < 68 || rect.bottom < 0) {
+                const top = Math.max(0, window.scrollY + rect.top - 68);
+                window.scrollTo({ top, behavior: "smooth" });
+              }
+            });
+          });
         }
         break;
       }
@@ -197,36 +203,38 @@ export function ReviewView({ files, annotations, diffMode, diffFont, collapsedFi
     : undefined;
 
   return (
-    <div className={showFileTree ? "review-view-layout" : "review-file-list"} style={gridStyle}>
-      {showFileTree ? (
-        <div className={treeCollapsed ? "file-tree-wrapper--collapsed" : "file-tree-wrapper"}>
-          <FileTree
-            nodes={fileTreeNodes}
-            activeFilePath={activeFilePath}
-            onSelectFile={scrollToFile}
-            collapsed={treeCollapsed}
-            onToggleCollapse={() => setTreeCollapsed((c) => !c)}
-          />
-          {!treeCollapsed && <div className="file-tree-resize-handle" onMouseDown={startResize} />}
-        </div>
-      ) : null}
-      <VirtualizedFileList
-        orderedFiles={orderedFiles}
-        activeFilePath={activeFilePath}
-        scrollTargetPath={pendingScrollTargetRef.current}
-        annotationsByFile={annotationsByFile}
-        diffMode={diffMode}
-        diffFont={diffFont}
-        collapsedFiles={collapsedFiles}
-        onToggleCollapsed={onToggleCollapsed}
-        viewedFiles={viewedFiles}
-        onToggleViewed={onToggleViewed}
-        addAnnotation={addAnnotation}
-        updateComment={updateComment}
-        deleteAnnotation={deleteAnnotation}
-        panelRefs={panelRefs}
-      />
-    </div>
+    <WindowVirtualizer>
+      <div className={showFileTree ? "review-view-layout" : "review-file-list"} style={gridStyle}>
+        {showFileTree ? (
+          <div className={treeCollapsed ? "file-tree-wrapper--collapsed" : "file-tree-wrapper"}>
+            <FileTree
+              nodes={fileTreeNodes}
+              activeFilePath={activeFilePath}
+              onSelectFile={scrollToFile}
+              collapsed={treeCollapsed}
+              onToggleCollapse={() => setTreeCollapsed((c) => !c)}
+            />
+            {!treeCollapsed && <div className="file-tree-resize-handle" onMouseDown={startResize} />}
+          </div>
+        ) : null}
+        <VirtualizedFileList
+          orderedFiles={orderedFiles}
+          activeFilePath={activeFilePath}
+          scrollTargetPath={pendingScrollTargetRef.current}
+          annotationsByFile={annotationsByFile}
+          diffMode={diffMode}
+          diffFont={diffFont}
+          collapsedFiles={collapsedFiles}
+          onToggleCollapsed={onToggleCollapsed}
+          viewedFiles={viewedFiles}
+          onToggleViewed={onToggleViewed}
+          addAnnotation={addAnnotation}
+          updateComment={updateComment}
+          deleteAnnotation={deleteAnnotation}
+          panelRefs={panelRefs}
+        />
+      </div>
+    </WindowVirtualizer>
   );
 
   function scrollToFile(filePath: string) {

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { FileDiff as FileDiffComponent, PatchDiff } from "@pierre/diffs/react";
-import type { DiffLineAnnotation, AnnotationSide, SelectedLineRange } from "@pierre/diffs";
+import type { DiffLineAnnotation, AnnotationSide, SelectedLineRange, RenderHeaderMetadataProps } from "@pierre/diffs";
 import { getSingularPatch, parseDiffFromFile } from "@pierre/diffs";
 import { ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
 import type { Annotation, AnnotationDraft, AnnotationLineSource, ReviewFile } from "../types.js";
@@ -25,6 +25,14 @@ interface DiffPanelProps {
   onUpdateAnnotation: (annotationId: string, comment: string) => void;
   onDeleteAnnotation: (annotationId: string) => void;
 }
+
+const STICKY_HEADER_CSS = [
+  `[data-diffs-header] { position: sticky; top: 68px; z-index: 10; background: #161b22; border-radius: 10px 10px 0 0; }`,
+  // Push +/- counts after annotation count (order 0) but before viewed toggle (order 2)
+  `[data-deletions-count], [data-additions-count] { order: 1; }`,
+  // Let slotted metadata children participate directly in the flex layout
+  `::slotted([slot="header-metadata"]) { display: contents; }`,
+].join("\n");
 
 export function DiffPanel({
   file,
@@ -121,90 +129,107 @@ export function DiffPanel({
   }, []);
 
   const closeWidget = useCallback(() => {
+    // Save scroll position before removing the CommentForm.
+    // Removing a focused textarea causes the browser to scroll (especially in WKWebView).
+    const scrollY = window.scrollY;
     setWidgetOpen(false);
     setWidgetSelection(null);
+    requestAnimationFrame(() => {
+      window.scrollTo(0, scrollY);
+    });
   }, []);
+
+  const annotationCount = annotations.length;
+
+  const renderHeaderPrefix = useCallback((_props: RenderHeaderMetadataProps) => (
+    <button
+      type="button"
+      className="diff-panel__collapse-btn"
+      onClick={onToggleCollapse}
+      aria-label={collapsed ? "Expand file" : "Collapse file"}
+    >
+      {collapsed ? <ChevronRightIcon size={16} /> : <ChevronDownIcon size={16} />}
+    </button>
+  ), [collapsed, onToggleCollapse]);
+
+  const renderHeaderMetadata = useCallback((_props: RenderHeaderMetadataProps) => (
+    <>
+      {annotationCount > 0 && (
+        <span className="diff-panel__annotation-count">
+          {annotationCount} annotation{annotationCount === 1 ? "" : "s"}
+        </span>
+      )}
+      <label className="diff-panel__viewed-toggle" onClick={(e) => e.stopPropagation()}>
+        <input type="checkbox" checked={isViewed} onChange={onToggleViewed} />
+        Viewed
+      </label>
+    </>
+  ), [annotationCount, isViewed, onToggleViewed]);
+
+  const renderAnnotation = useCallback((annotation: DiffLineAnnotation<Annotation>) => {
+    const isDraftOnly = (annotation.metadata as any)?.__draft === true;
+    const threadAnnotations = isDraftOnly ? [] : annotations.filter(
+      (a) => (a.lineEnd ?? a.lineStart) === annotation.lineNumber && toSide(a.lineSource) === annotation.side
+    );
+
+    // Show CommentForm inline if draft targets this position
+    const draftLine = widgetSelection ? (widgetSelection.lineEnd ?? widgetSelection.lineStart) : -1;
+    const draftSide = widgetSelection ? toSide(widgetSelection.lineSource) : undefined;
+    const showForm = widgetOpen && annotation.lineNumber === draftLine && annotation.side === draftSide;
+
+    if (threadAnnotations.length === 0 && !showForm) return null;
+    return (
+      <>
+        {threadAnnotations.length > 0 && (
+          <CommentThread
+            comments={threadAnnotations}
+            onUpdateComment={onUpdateAnnotation}
+            onDeleteComment={onDeleteAnnotation}
+          />
+        )}
+        {showForm && widgetSelection && (
+          <CommentForm
+            label={formatSelectionLabel(widgetSelection)}
+            selectedLinesText={extractLinesFromDiff(
+              file.rawDiff,
+              widgetSelection.lineStart,
+              widgetSelection.lineEnd ?? widgetSelection.lineStart,
+              widgetSelection.lineSource
+            )}
+            onCancel={closeWidget}
+            onSubmit={(comment) => {
+              onAddAnnotation({
+                filePath: file.displayPath,
+                lineStart: widgetSelection.lineStart,
+                lineEnd: widgetSelection.lineEnd,
+                lineSource: widgetSelection.lineSource,
+                comment,
+              });
+              closeWidget();
+            }}
+          />
+        )}
+      </>
+    );
+  }, [annotations, widgetOpen, widgetSelection, file.rawDiff, file.displayPath, onAddAnnotation, onUpdateAnnotation, onDeleteAnnotation, closeWidget]);
 
   return (
     <section className="review-panel review-panel--diff">
-      <div className="review-panel__header review-panel__header--sticky">
-        <div className="review-panel__header-left">
-          <button type="button" className="diff-panel__collapse-btn" onClick={onToggleCollapse} aria-label={collapsed ? "Expand file" : "Collapse file"}>
-            {collapsed ? <ChevronRightIcon size={16} /> : <ChevronDownIcon size={16} />}
-          </button>
-          <div>
-            <div className="review-panel__title">{file.displayPath}</div>
-            <div className="review-panel__meta">
-              +{file.additions} additions · -{file.deletions} deletions · {annotations.length} annotation{annotations.length === 1 ? "" : "s"}
-            </div>
-          </div>
-        </div>
-        <label className="diff-panel__viewed-toggle" onClick={(e) => e.stopPropagation()}>
-          <input type="checkbox" checked={isViewed} onChange={onToggleViewed} />
-          Viewed
-        </label>
-      </div>
-      {!collapsed && (
-        <div className="review-panel__body review-panel__body--diff">
-          <DiffErrorBoundary fallback={<DiffRenderFallback file={file} />}>
-            <DiffRenderer
-              fileDiff={fileDiff}
-              rawDiff={file.rawDiff}
-              diffFont={diffFont}
-              diffStyle={diffStyle}
-              handleGutterClick={handleGutterClick}
-              handleLineSelected={handleLineSelected}
-              lineAnnotations={lineAnnotations}
-              renderAnnotation={(annotation: DiffLineAnnotation<Annotation>) => {
-                const isDraftOnly = (annotation.metadata as any)?.__draft === true;
-                const threadAnnotations = isDraftOnly ? [] : annotations.filter(
-                  (a) => (a.lineEnd ?? a.lineStart) === annotation.lineNumber && toSide(a.lineSource) === annotation.side
-                );
-
-                // Show CommentForm inline if draft targets this position
-                const draftLine = widgetSelection ? (widgetSelection.lineEnd ?? widgetSelection.lineStart) : -1;
-                const draftSide = widgetSelection ? toSide(widgetSelection.lineSource) : undefined;
-                const showForm = widgetOpen && annotation.lineNumber === draftLine && annotation.side === draftSide;
-
-                if (threadAnnotations.length === 0 && !showForm) return null;
-                return (
-                  <>
-                    {threadAnnotations.length > 0 && (
-                      <CommentThread
-                        comments={threadAnnotations}
-                        onUpdateComment={onUpdateAnnotation}
-                        onDeleteComment={onDeleteAnnotation}
-                      />
-                    )}
-                    {showForm && widgetSelection && (
-                      <CommentForm
-                        label={formatSelectionLabel(widgetSelection)}
-                        selectedLinesText={extractLinesFromDiff(
-                          file.rawDiff,
-                          widgetSelection.lineStart,
-                          widgetSelection.lineEnd ?? widgetSelection.lineStart,
-                          widgetSelection.lineSource
-                        )}
-                        onCancel={closeWidget}
-                        onSubmit={(comment) => {
-                          onAddAnnotation({
-                            filePath: file.displayPath,
-                            lineStart: widgetSelection.lineStart,
-                            lineEnd: widgetSelection.lineEnd,
-                            lineSource: widgetSelection.lineSource,
-                            comment,
-                          });
-                          closeWidget();
-                        }}
-                      />
-                    )}
-                  </>
-                );
-              }}
-            />
-          </DiffErrorBoundary>
-        </div>
-      )}
+      <DiffErrorBoundary fallback={<DiffRenderFallback file={file} />}>
+        <DiffRenderer
+          fileDiff={fileDiff}
+          rawDiff={file.rawDiff}
+          diffFont={diffFont}
+          diffStyle={diffStyle}
+          collapsed={collapsed}
+          handleGutterClick={handleGutterClick}
+          handleLineSelected={handleLineSelected}
+          lineAnnotations={lineAnnotations}
+          renderAnnotation={renderAnnotation}
+          renderHeaderPrefix={renderHeaderPrefix}
+          renderHeaderMetadata={renderHeaderMetadata}
+        />
+      </DiffErrorBoundary>
     </section>
   );
 }
@@ -220,19 +245,25 @@ function DiffRenderer({
   rawDiff,
   diffFont,
   diffStyle,
+  collapsed,
   handleGutterClick,
   handleLineSelected,
   lineAnnotations,
   renderAnnotation,
+  renderHeaderPrefix,
+  renderHeaderMetadata,
 }: {
   fileDiff: ReturnType<typeof parseDiffFromFile> | null;
   rawDiff: string;
   diffFont?: string;
   diffStyle: DiffStyle;
+  collapsed: boolean;
   handleGutterClick: (range: SelectedLineRange) => void;
   handleLineSelected: (range: SelectedLineRange | null) => void;
   lineAnnotations: DiffLineAnnotation<Annotation>[];
   renderAnnotation: (annotation: DiffLineAnnotation<Annotation>) => React.ReactNode;
+  renderHeaderPrefix: (props: RenderHeaderMetadataProps) => React.ReactNode;
+  renderHeaderMetadata: (props: RenderHeaderMetadataProps) => React.ReactNode;
 }) {
   const style = diffFont ? { "--diffs-font-family": diffFont } as React.CSSProperties : undefined;
   const options = {
@@ -246,6 +277,8 @@ function DiffRenderer({
     onLineSelected: handleLineSelected,
     expandUnchanged: false,
     collapsedContextThreshold: 5,
+    collapsed,
+    unsafeCSS: STICKY_HEADER_CSS,
   };
 
   if (fileDiff) {
@@ -256,6 +289,8 @@ function DiffRenderer({
         options={options}
         lineAnnotations={lineAnnotations}
         renderAnnotation={renderAnnotation}
+        renderHeaderPrefix={renderHeaderPrefix}
+        renderHeaderMetadata={renderHeaderMetadata}
       />
     );
   }
@@ -267,6 +302,8 @@ function DiffRenderer({
       options={options}
       lineAnnotations={lineAnnotations}
       renderAnnotation={renderAnnotation}
+      renderHeaderPrefix={renderHeaderPrefix}
+      renderHeaderMetadata={renderHeaderMetadata}
     />
   );
 }
