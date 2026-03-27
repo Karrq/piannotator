@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { PatchDiff } from "@pierre/diffs/react";
+import { FileDiff as FileDiffComponent, PatchDiff } from "@pierre/diffs/react";
 import type { DiffLineAnnotation, AnnotationSide, SelectedLineRange } from "@pierre/diffs";
+import { getSingularPatch, parseDiffFromFile } from "@pierre/diffs";
 import { ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
 import type { Annotation, AnnotationDraft, AnnotationLineSource, ReviewFile } from "../types.js";
 import { buildLineAnnotations, extractLinesFromDiff } from "./diff-panel-helpers.js";
@@ -40,6 +41,25 @@ export function DiffPanel({
 }: DiffPanelProps) {
   const [widgetSelection, setWidgetSelection] = useState<RangeSelection | null>(null);
   const [widgetOpen, setWidgetOpen] = useState(false);
+
+  // Parse the full-context diff to extract old/new file contents, then
+  // re-parse with parseDiffFromFile to get isPartial=false and normal-context
+  // hunks. This enables expandable collapsed regions between hunks.
+  const fileDiff = useMemo(() => {
+    try {
+      const parsed = getSingularPatch(file.rawDiff);
+      if (parsed.additionLines.length === 0 && parsed.deletionLines.length === 0) return null;
+      const oldContents = (parsed.deletionLines as string[]).join("");
+      const newContents = (parsed.additionLines as string[]).join("");
+      return parseDiffFromFile(
+        { name: parsed.prevName ?? parsed.name, contents: oldContents },
+        { name: parsed.name, contents: newContents },
+      );
+    } catch {
+      return null; // fall back to PatchDiff
+    }
+  }, [file.rawDiff]);
+
   const savedLineAnnotations = useMemo(() => buildLineAnnotations(annotations), [annotations]);
 
   // Add a draft slot for the inline CommentForm when the widget is open,
@@ -127,19 +147,13 @@ export function DiffPanel({
       {!collapsed && (
         <div className="review-panel__body review-panel__body--diff">
           <DiffErrorBoundary fallback={<DiffRenderFallback file={file} />}>
-            <PatchDiff
-              patch={file.rawDiff}
-              style={diffFont ? { "--diffs-font-family": diffFont } as React.CSSProperties : undefined}
-              options={{
-                diffStyle,
-                themeType: "dark",
-                overflow: "wrap",
-                hunkSeparators: "line-info",
-                enableGutterUtility: true,
-                onGutterUtilityClick: handleGutterClick,
-                enableLineSelection: true,
-                onLineSelected: handleLineSelected,
-              }}
+            <DiffRenderer
+              fileDiff={fileDiff}
+              rawDiff={file.rawDiff}
+              diffFont={diffFont}
+              diffStyle={diffStyle}
+              handleGutterClick={handleGutterClick}
+              handleLineSelected={handleLineSelected}
               lineAnnotations={lineAnnotations}
               renderAnnotation={(annotation: DiffLineAnnotation<Annotation>) => {
                 const isDraftOnly = (annotation.metadata as any)?.__draft === true;
@@ -192,6 +206,68 @@ export function DiffPanel({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Renders either FileDiffComponent (with expandable collapsed regions) or
+ * PatchDiff (fallback). FileDiffComponent is used when we successfully
+ * extracted old/new file contents from a full-context diff and re-parsed
+ * with parseDiffFromFile (isPartial=false, normal-context hunks).
+ */
+function DiffRenderer({
+  fileDiff,
+  rawDiff,
+  diffFont,
+  diffStyle,
+  handleGutterClick,
+  handleLineSelected,
+  lineAnnotations,
+  renderAnnotation,
+}: {
+  fileDiff: ReturnType<typeof parseDiffFromFile> | null;
+  rawDiff: string;
+  diffFont?: string;
+  diffStyle: DiffStyle;
+  handleGutterClick: (range: SelectedLineRange) => void;
+  handleLineSelected: (range: SelectedLineRange | null) => void;
+  lineAnnotations: DiffLineAnnotation<Annotation>[];
+  renderAnnotation: (annotation: DiffLineAnnotation<Annotation>) => React.ReactNode;
+}) {
+  const style = diffFont ? { "--diffs-font-family": diffFont } as React.CSSProperties : undefined;
+  const options = {
+    diffStyle,
+    themeType: "dark" as const,
+    overflow: "wrap" as const,
+    hunkSeparators: "line-info" as const,
+    enableGutterUtility: true,
+    onGutterUtilityClick: handleGutterClick,
+    enableLineSelection: true,
+    onLineSelected: handleLineSelected,
+    expandUnchanged: false,
+    collapsedContextThreshold: 5,
+  };
+
+  if (fileDiff) {
+    return (
+      <FileDiffComponent
+        fileDiff={fileDiff}
+        style={style}
+        options={options}
+        lineAnnotations={lineAnnotations}
+        renderAnnotation={renderAnnotation}
+      />
+    );
+  }
+
+  return (
+    <PatchDiff
+      patch={rawDiff}
+      style={style}
+      options={options}
+      lineAnnotations={lineAnnotations}
+      renderAnnotation={renderAnnotation}
+    />
   );
 }
 
