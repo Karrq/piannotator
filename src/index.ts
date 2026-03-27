@@ -1,6 +1,7 @@
-import type { Static } from "@sinclair/typebox";
+import { StringEnum } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
+import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
 import { extractDiffContext, isUnifiedDiff, parseDiff } from "./diff-parser.js";
 import type { ReviewClient } from "./review-client.js";
@@ -26,48 +27,52 @@ import {
   type TextReviewClientRequest
 } from "./types.js";
 
-const RequestTextParams = Type.Object(
+const AnnotateParamsSchema = Type.Object(
   {
-    action: Type.Literal("request"),
-    content: Type.String({ description: "Raw text to review" }),
-    title: Type.Optional(Type.String({ description: "Short review title" }))
+    action: StringEnum(["request", "overview", "detail"] as const, {
+      description: "Tool action: request starts a review, overview lists annotations, detail returns one annotation."
+    }),
+    content: Type.Optional(
+      Type.String({ description: "Raw text to review. Use with action=request instead of command." })
+    ),
+    command: Type.Optional(
+      Type.String({ description: "Shell command whose output should be reviewed. Use with action=request instead of content." })
+    ),
+    title: Type.Optional(Type.String({ description: "Short review title. Use with action=request." })),
+    reviewId: Type.Optional(
+      Type.String({ description: "Review ID returned by request. Use with action=overview or action=detail." })
+    ),
+    annotationId: Type.Optional(
+      Type.String({ description: "Annotation ID within the review. Use with action=detail." })
+    )
   },
   { additionalProperties: false }
 );
 
-const RequestCommandParams = Type.Object(
-  {
-    action: Type.Literal("request"),
-    command: Type.String({ description: "Shell command whose output should be reviewed" }),
-    title: Type.Optional(Type.String({ description: "Short review title" }))
-  },
-  { additionalProperties: false }
-);
+type AnnotateParams = Static<typeof AnnotateParamsSchema>;
 
-const OverviewParams = Type.Object(
-  {
-    action: Type.Literal("overview"),
-    reviewId: Type.String({ description: "Review ID returned by request" })
-  },
-  { additionalProperties: false }
-);
+type RequestTextInput = {
+  action: "request";
+  content: string;
+  title?: string;
+};
 
-const DetailParams = Type.Object(
-  {
-    action: Type.Literal("detail"),
-    reviewId: Type.String({ description: "Review ID returned by request" }),
-    annotationId: Type.String({ description: "Annotation ID within the review" })
-  },
-  { additionalProperties: false }
-);
+type RequestCommandInput = {
+  action: "request";
+  command: string;
+  title?: string;
+};
 
-const AnnotateParams = Type.Union([RequestTextParams, RequestCommandParams, OverviewParams, DetailParams]);
+type OverviewInput = {
+  action: "overview";
+  reviewId: string;
+};
 
-type AnnotateParams = Static<typeof AnnotateParams>;
-type RequestTextInput = Static<typeof RequestTextParams>;
-type RequestCommandInput = Static<typeof RequestCommandParams>;
-type OverviewInput = Static<typeof OverviewParams>;
-type DetailInput = Static<typeof DetailParams>;
+type DetailInput = {
+  action: "detail";
+  reviewId: string;
+  annotationId: string;
+};
 
 export default function (pi: ExtensionAPI) {
   let reviews: Review[] = [];
@@ -118,16 +123,34 @@ export default function (pi: ExtensionAPI) {
       "Use annotate.overview before annotate.detail so only the needed annotation context enters the model context.",
       "Prefer command mode when the content should stay out of the model context."
     ],
-    parameters: AnnotateParams,
+    parameters: AnnotateParamsSchema,
 
     async execute(_toolCallId, params, signal) {
       switch (params.action) {
-        case "request":
-          return handleRequest(params, signal);
-        case "overview":
-          return handleOverview(params);
-        case "detail":
-          return handleDetail(params);
+        case "request": {
+          const request = parseRequestInput(params);
+          if ("error" in request) {
+            return createResult("request", request.error, { error: request.error });
+          }
+
+          return handleRequest(request, signal);
+        }
+        case "overview": {
+          const overview = parseOverviewInput(params);
+          if ("error" in overview) {
+            return createResult("overview", overview.error, { error: overview.error });
+          }
+
+          return handleOverview(overview);
+        }
+        case "detail": {
+          const detail = parseDetailInput(params);
+          if ("error" in detail) {
+            return createResult("detail", detail.error, { error: detail.error });
+          }
+
+          return handleDetail(detail);
+        }
         default:
           return createResult("detail", `Unsupported annotate action: ${(params as { action: string }).action}`, {
             error: `unsupported action: ${(params as { action: string }).action}`
@@ -300,6 +323,56 @@ export default function (pi: ExtensionAPI) {
   }
 }
 
+function parseRequestInput(params: AnnotateParams): RequestTextInput | RequestCommandInput | { error: string } {
+  const hasContent = params.content !== undefined;
+  const hasCommand = params.command !== undefined;
+
+  if (hasContent === hasCommand) {
+    return { error: "annotate.request requires exactly one of content or command." };
+  }
+
+  if (hasCommand) {
+    return {
+      action: "request",
+      command: params.command!,
+      title: params.title
+    };
+  }
+
+  return {
+    action: "request",
+    content: params.content!,
+    title: params.title
+  };
+}
+
+function parseOverviewInput(params: AnnotateParams): OverviewInput | { error: string } {
+  if (params.reviewId === undefined) {
+    return { error: "annotate.overview requires reviewId." };
+  }
+
+  return {
+    action: "overview",
+    reviewId: params.reviewId
+  };
+}
+
+function parseDetailInput(params: AnnotateParams): DetailInput | { error: string } {
+  if (params.reviewId === undefined) {
+    return { error: "annotate.detail requires reviewId." };
+  }
+
+  if (params.annotationId === undefined) {
+    return { error: "annotate.detail requires annotationId." };
+  }
+
+  return {
+    action: "detail",
+    reviewId: params.reviewId,
+    annotationId: params.annotationId
+  };
+}
+
 function combineCommandOutput(stdout: string, stderr: string, exitCode: number | undefined): string {
   const parts: string[] = [];
 
@@ -413,8 +486,9 @@ function formatDiffContextLines(
 function renderCall(args: AnnotateParams, theme: Theme) {
   switch (args.action) {
     case "request": {
-      const target = "command" in args ? args.command : previewText(args.content, 40);
-      const mode = "command" in args ? "command" : "text";
+      const isCommandRequest = typeof args.command === "string";
+      const target = isCommandRequest ? args.command : previewText(args.content ?? "", 40);
+      const mode = isCommandRequest ? "command" : "text";
       return new Text(
         theme.fg("toolTitle", theme.bold("annotate ")) +
           theme.fg("muted", `request ${mode}`) +
@@ -426,16 +500,17 @@ function renderCall(args: AnnotateParams, theme: Theme) {
     }
     case "overview":
       return new Text(
-        theme.fg("toolTitle", theme.bold("annotate ")) + theme.fg("muted", `overview ${args.reviewId}`),
+        theme.fg("toolTitle", theme.bold("annotate ")) +
+          theme.fg("muted", `overview ${args.reviewId ?? "(missing reviewId)"}`),
         0,
         0
       );
     case "detail":
       return new Text(
         theme.fg("toolTitle", theme.bold("annotate ")) +
-          theme.fg("muted", `detail ${args.reviewId}`) +
+          theme.fg("muted", `detail ${args.reviewId ?? "(missing reviewId)"}`) +
           " " +
-          theme.fg("accent", args.annotationId),
+          theme.fg("accent", args.annotationId ?? "(missing annotationId)"),
         0,
         0
       );

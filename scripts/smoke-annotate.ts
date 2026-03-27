@@ -17,6 +17,7 @@ index 1111111..2222222 100644
 
 type ToolDefinition = {
   name: string;
+  parameters?: any;
   execute: (...args: any[]) => Promise<any>;
 };
 
@@ -52,6 +53,9 @@ const annotateTool = tools.get("annotate");
 if (!annotateTool) {
   throw new Error("annotate tool was not registered");
 }
+
+assert.equal(annotateTool.parameters?.type, "object");
+assert.deepEqual(annotateTool.parameters?.properties?.action?.enum, ["request", "overview", "detail"]);
 
 const ctx = {
   sessionManager: {
@@ -137,5 +141,14 @@ const stderrRequest = await annotateTool.execute(
   ctx
 );
 assert.match(stderrRequest.details.review.source.content, /^\[stderr\]\nonly stderr$/);
+
+const invalidRequest = await annotateTool.execute(
+  "tool-call-8",
+  { action: "request", content: "first line", command: "emit-diff" },
+  undefined,
+  undefined,
+  ctx
+);
+assert.equal(invalidRequest.details.error, "annotate.request requires exactly one of content or command.");
 
 console.log("Annotate stub smoke test passed.");
