@@ -165,7 +165,7 @@ const closedClient = new CmuxReviewClient(
       result: { stdout: "OK surface=surface:43 pane=pane:10 placement=split" }
     },
     {
-      result: { stderr: "Error: timeout: Condition not met before timeout", code: 1 }
+      result: { stderr: "Error: js_error: Browser surface disappeared", code: 1 }
     },
     {
       assertCall(command, args) {
@@ -195,13 +195,6 @@ const delayedClient = new CmuxReviewClient(
     },
     {
       result: { stderr: "Error: js_error: Timed out waiting for JavaScript result.", code: 1 }
-    },
-    {
-      assertCall(command, args) {
-        assert.equal(command, "cmux");
-        assert.deepEqual(args, ["browser", "surface:44", "eval", "1"]);
-      },
-      result: { stdout: "1" }
     },
     {
       result: { stdout: "OK" }

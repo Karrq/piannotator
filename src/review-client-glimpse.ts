@@ -98,7 +98,11 @@ export function getDefaultReviewUiPath(): string {
   return compiledCandidate;
 }
 
-async function promptWithReloadableFile(title: string, html: string, options?: ReviewClientOptions): Promise<ReviewBridgeMessage | null> {
+async function promptWithReloadableFile(
+  title: string,
+  html: string,
+  options?: ReviewClientOptions
+): Promise<ReviewBridgeMessage | null> {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "piannotator-review-"));
   const htmlPath = path.join(tempDir, "review-ui.html");
 

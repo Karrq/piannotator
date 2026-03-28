@@ -121,12 +121,12 @@ export class CmuxReviewClient implements ReviewClient {
       ]);
 
       if (waitResult.code !== 0) {
-        if (!(await this.isSurfaceAlive(surfaceRef))) {
-          return null;
-        }
-
         if (isTimeoutResult(waitResult)) {
           continue;
+        }
+
+        if (!(await this.isSurfaceAlive(surfaceRef))) {
+          return null;
         }
 
         throw new Error(`cmux browser wait failed: ${formatExecOutput(waitResult)}`);
