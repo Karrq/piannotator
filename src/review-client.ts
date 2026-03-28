@@ -1,6 +1,7 @@
 import type { ReviewClientRequest, ReviewClientResult, ReviewFile } from "./types.js";
 
 export interface ReviewClientOptions {
+  signal?: AbortSignal;
   onRerunCommand?: (command: string) => Promise<{ content: string; files: ReviewFile[] }>;
 }
 

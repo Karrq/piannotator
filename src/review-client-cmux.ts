@@ -66,6 +66,16 @@ export class CmuxReviewClient implements ReviewClient {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "piannotator-review-"));
     const htmlPath = path.join(tempDir, "review-ui.html");
     let surfaceRef: string | null = null;
+    const abortSignal = options?.signal;
+    const handleAbort = () => {
+      if (surfaceRef) {
+        void this.cleanupSurface(surfaceRef);
+      }
+    };
+
+    if (abortSignal && !abortSignal.aborted) {
+      abortSignal.addEventListener("abort", handleAbort, { once: true });
+    }
 
     try {
       await writeFile(htmlPath, html, "utf8");
@@ -73,8 +83,15 @@ export class CmuxReviewClient implements ReviewClient {
       const openResult = await this.expectCmux(["browser", "open-split", pathToFileURL(htmlPath).href]);
       surfaceRef = parseSurfaceRef(openResult.stdout);
 
+      if (options?.signal?.aborted) {
+        return null;
+      }
+
       return await this.waitForReviewResult(surfaceRef, tempDir, options);
     } finally {
+      if (abortSignal) {
+        abortSignal.removeEventListener("abort", handleAbort);
+      }
       if (surfaceRef) {
         await this.cleanupSurface(surfaceRef);
       }
@@ -87,7 +104,12 @@ export class CmuxReviewClient implements ReviewClient {
     tempDir: string,
     options?: ReviewClientOptions
   ): Promise<ReviewClientResult | null> {
+    const abortSignal = options?.signal;
+
     while (true) {
+      if (abortSignal?.aborted) {
+        return null;
+      }
       const waitResult = await this.runCmux([
         "browser",
         surfaceRef,

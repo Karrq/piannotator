@@ -127,10 +127,26 @@ async function promptWithReloadableFile(title: string, html: string, options?: R
 
   return new Promise((resolve, reject) => {
     let settled = false;
+    const abortSignal = options?.signal;
 
     const cleanup = async () => {
+      if (abortSignal) {
+        abortSignal.removeEventListener("abort", handleAbort);
+      }
       await rm(tempDir, { recursive: true, force: true });
     };
+
+    const handleAbort = () => {
+      win.close();
+    };
+
+    if (abortSignal) {
+      if (abortSignal.aborted) {
+        handleAbort();
+      } else {
+        abortSignal.addEventListener("abort", handleAbort, { once: true });
+      }
+    }
 
     const resolveOnce = (value: ReviewBridgeMessage | null) => {
       if (settled) {

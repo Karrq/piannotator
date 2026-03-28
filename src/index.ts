@@ -1,5 +1,5 @@
 import { StringEnum } from "@mariozechner/pi-ai";
-import type { ExtensionAPI, ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
+import { BorderedLoader, type ExtensionAPI, type ExtensionContext, type ExtensionCommandContext, type Theme } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
@@ -183,7 +183,7 @@ export default function (pi: ExtensionAPI) {
         };
       }
 
-      const result = await executeReview(source);
+      const result = await executeCommandReview(ctx, source);
 
       if (result.cancelled) {
         ctx.ui.notify("Review cancelled", "info");
@@ -223,6 +223,53 @@ export default function (pi: ExtensionAPI) {
     );
   });
 
+  async function executeCommandReview(
+    ctx: ExtensionCommandContext,
+    source: ReviewSourceCommand
+  ): Promise<{ review: Review; cancelled: false } | { cancelled: true }> {
+    if (!ctx.hasUI) {
+      return executeReview(source);
+    }
+
+    const abortController = new AbortController();
+    const result = await ctx.ui.custom<
+      | { review: Review; cancelled: false }
+      | { cancelled: true }
+      | { error: unknown }
+    >((tui, theme, _keybindings, done) => {
+      const loader = new BorderedLoader(tui, theme, "Review in progress...");
+      let finished = false;
+
+      const finish = (value: { review: Review; cancelled: false } | { cancelled: true } | { error: unknown }) => {
+        if (finished) {
+          return;
+        }
+
+        finished = true;
+        loader.dispose();
+        done(value);
+      };
+
+      void executeReview(source, abortController.signal).then(
+        (value) => finish(value),
+        (error) => finish({ error })
+      );
+
+      loader.onAbort = () => {
+        abortController.abort();
+        finish({ cancelled: true });
+      };
+
+      return loader;
+    });
+
+    if ("error" in result) {
+      throw result.error;
+    }
+
+    return result;
+  }
+
   async function executeReview(
     source: ReviewSourceCommand,
     signal?: AbortSignal
@@ -236,6 +283,7 @@ export default function (pi: ExtensionAPI) {
     };
 
     const clientResult = await reviewClient.requestReview(clientRequest, {
+      signal,
       onRerunCommand: async (command: string) => {
         const rerunResult = await pi.exec("sh", ["-lc", wrapWithFullContext(command)], { signal });
         const content = combineCommandOutput(rerunResult.stdout, rerunResult.stderr, rerunResult.code);
