@@ -21,8 +21,17 @@ type ToolDefinition = {
   execute: (...args: any[]) => Promise<any>;
 };
 
+type CommandDefinition = {
+  description?: string;
+  handler: (...args: any[]) => Promise<any>;
+};
+
 const tools = new Map<string, ToolDefinition>();
+const commands = new Map<string, CommandDefinition>();
 const handlers = new Map<string, Array<(...args: any[]) => any>>();
+const sentMessages: Array<{ message: any; options: any }> = [];
+const appendedEntries: Array<{ customType: string; data: any }> = [];
+let jjRefCallCount = 0;
 
 const api = {
   on(event: string, handler: (...args: any[]) => any) {
@@ -33,21 +42,43 @@ const api = {
   registerTool(tool: ToolDefinition) {
     tools.set(tool.name, tool);
   },
-  registerCommand(_name: string, _options: any) {},
+  registerCommand(name: string, options: CommandDefinition) {
+    commands.set(name, options);
+  },
   registerMessageRenderer(_customType: string, _renderer: any) {},
-  async exec(_command: string, args: string[]) {
+  sendMessage(message: any, options: any) {
+    sentMessages.push({ message, options });
+  },
+  appendEntry(customType: string, data: any) {
+    appendedEntries.push({ customType, data });
+  },
+  async exec(command: string, args: string[]) {
+    if (command === "jj" && args.join(" ") === "log -r @ -T commit_id --no-graph") {
+      jjRefCallCount += 1;
+      const ref = jjRefCallCount === 1 ? "base-ref\n" : "updated-ref\n";
+      return { stdout: ref, stderr: "", code: 0 };
+    }
+
     const shellCommand = args[1];
-    // Commands may be wrapped with full-context preamble (git/jj function overrides)
-    const unwrapped = shellCommand.replace(/^.*?;\s*(?=\S)/, "").replace(/^.*?;\s*(?=\S)/, "").replace(/^.*?;\s*/, "");
-    if (unwrapped === "emit-diff" || shellCommand.endsWith("emit-diff")) {
-      return { stdout: diffFixture, stderr: "", code: 0 };
+    if (typeof shellCommand === "string") {
+      const unwrapped = shellCommand.replace(/^.*?;\s*(?=\S)/, "").replace(/^.*?;\s*(?=\S)/, "").replace(/^.*?;\s*/, "");
+      if (unwrapped === "emit-diff" || shellCommand.endsWith("emit-diff")) {
+        return { stdout: diffFixture, stderr: "", code: 0 };
+      }
+
+      if (unwrapped === "emit-stderr" || shellCommand.endsWith("emit-stderr")) {
+        return { stdout: "", stderr: "only stderr", code: 1 };
+      }
+
+      if (
+        unwrapped.includes("jj diff --from 'base-ref' --git") ||
+        unwrapped.includes("jj diff --from 'updated-ref' --git")
+      ) {
+        return { stdout: diffFixture, stderr: "", code: 0 };
+      }
     }
 
-    if (unwrapped === "emit-stderr" || shellCommand.endsWith("emit-stderr")) {
-      return { stdout: "", stderr: "only stderr", code: 1 };
-    }
-
-    throw new Error(`Unexpected exec command in smoke test: ${shellCommand}`);
+    throw new Error(`Unexpected exec command in smoke test: ${command} ${args.join(" ")}`);
   }
 };
 
@@ -58,10 +89,15 @@ if (!annotateTool) {
   throw new Error("annotate tool was not registered");
 }
 
+const annotateCommand = commands.get("annotate");
+if (!annotateCommand) {
+  throw new Error("/annotate command was not registered");
+}
+
 assert.equal(annotateTool.parameters?.type, "object");
 assert.deepEqual(annotateTool.parameters?.properties?.action?.enum, ["request", "detail"]);
 
-const ctx = {
+const emptyCtx = {
   sessionManager: {
     getBranch() {
       return [];
@@ -69,13 +105,19 @@ const ctx = {
   }
 };
 
+// Session baseline ref capture
+const sessionStartHandlers = handlers.get("session_start") ?? [];
+assert.equal(sessionStartHandlers.length, 1);
+await sessionStartHandlers[0]({}, emptyCtx as any);
+assert.deepEqual(appendedEntries, [{ customType: "annotate-ref", data: { ref: "base-ref" } }]);
+
 // Diff command request
 const diffRequest = await annotateTool.execute(
   "tool-call-1",
   { action: "request", command: "emit-diff" },
   undefined,
   undefined,
-  ctx
+  emptyCtx
 );
 assert.match(diffRequest.content[0].text, /Review review-1/);
 assert.equal(diffRequest.details.review.id, "review-1");
@@ -94,7 +136,7 @@ const diffDetail = await annotateTool.execute(
   { action: "detail", reviewId: "review-1", annotationIds: ["A1"] },
   undefined,
   undefined,
-  ctx
+  emptyCtx
 );
 assert.match(diffDetail.content[0].text, /Annotation A1 in src\/example.ts:/);
 assert.match(diffDetail.content[0].text, /Context \(@@ -1,4 \+1,5 @@\):/);
@@ -105,7 +147,7 @@ const missingDetail = await annotateTool.execute(
   { action: "detail", reviewId: "review-1", annotationIds: ["A1", "A99"] },
   undefined,
   undefined,
-  ctx
+  emptyCtx
 );
 assert.match(missingDetail.content[0].text, /Annotation A1 in src\/example.ts:/);
 assert.match(missingDetail.content[0].text, /Annotation A99 was not found/);
@@ -116,7 +158,7 @@ const rangeDetail = await annotateTool.execute(
   { action: "detail", reviewId: "review-1", annotationIds: ["A1..A1"] },
   undefined,
   undefined,
-  ctx
+  emptyCtx
 );
 assert.match(rangeDetail.content[0].text, /Annotation A1 in src\/example.ts:/);
 
@@ -126,7 +168,7 @@ const stderrRequest = await annotateTool.execute(
   { action: "request", command: "emit-stderr" },
   undefined,
   undefined,
-  ctx
+  emptyCtx
 );
 assert.match(stderrRequest.details.review.source.content, /^\[stderr\]\nonly stderr$/);
 
@@ -136,8 +178,61 @@ const noCommandRequest = await annotateTool.execute(
   { action: "request" },
   undefined,
   undefined,
-  ctx
+  emptyCtx
 );
 assert.equal(noCommandRequest.details.error, "annotate.request requires a command.");
+
+// Bare /annotate uses code diff since baseline plus per-message assistant files
+const commandCtx = {
+  hasUI: false,
+  ui: {
+    notify() {},
+  },
+  sessionManager: {
+    getBranch() {
+      return [
+        {
+          type: "message",
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "please review this turn" }]
+          }
+        },
+        {
+          type: "message",
+          message: {
+            role: "assistant",
+            content: [
+              { type: "text", text: "First assistant message." },
+              { type: "thinking", thinking: "hidden" }
+            ]
+          }
+        },
+        {
+          type: "message",
+          message: {
+            role: "assistant",
+            content: [
+              { type: "text", text: "Second assistant message." }
+            ]
+          }
+        }
+      ];
+    }
+  }
+};
+
+await annotateCommand.handler("", commandCtx as any);
+assert.equal(sentMessages.length, 1);
+assert.equal(sentMessages[0].message.customType, "annotate");
+assert.equal(sentMessages[0].options.triggerTurn, true);
+assert.equal(sentMessages[0].message.details.lastReviewRef, "updated-ref");
+const commandReviews = sentMessages[0].message.details.reviews;
+const commandReviewFiles = commandReviews[commandReviews.length - 1].versions[0].files.map((file: any) => file.displayPath);
+assert.deepEqual(commandReviewFiles, [
+  "src/example.ts",
+  "assistant-message-1.md",
+  "assistant-message-2.md"
+]);
 
 console.log("Annotate stub smoke test passed.");
