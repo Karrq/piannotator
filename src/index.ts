@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { BorderedLoader, type ExtensionAPI, type ExtensionContext, type ExtensionCommandContext, type Theme } from "@mariozechner/pi-coding-agent";
+import { BorderedLoader, findTurnStartIndex, type ExtensionAPI, type ExtensionContext, type ExtensionCommandContext, type SessionEntry, type Theme } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
@@ -723,17 +723,12 @@ function previewText(value: string, maxLength: number): string {
 }
 
 function getLastTurnAssistantDiffs(ctx: ExtensionContext): string[] {
-  const entries = ctx.sessionManager.getBranch();
-  let turnStart = -1;
-
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const entry = entries[i];
-    if (entry.type === "message" && entry.message.role === "user") {
-      turnStart = i;
-      break;
-    }
+  const entries = ctx.sessionManager.getBranch() as SessionEntry[];
+  if (entries.length === 0) {
+    return [];
   }
 
+  const turnStart = findTurnStartIndex(entries, entries.length - 1, 0);
   if (turnStart === -1) {
     return [];
   }
