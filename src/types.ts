@@ -75,6 +75,7 @@ export interface Review {
 export interface AnnotateState {
   reviews: Review[];
   nextReviewId: number;
+  lastReviewRef?: string;
 }
 
 export interface AnnotateToolDetails extends AnnotateState {

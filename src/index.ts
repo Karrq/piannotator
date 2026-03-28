@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { BorderedLoader, type ExtensionAPI, type ExtensionContext, type ExtensionCommandContext, type Theme } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
@@ -64,13 +66,23 @@ type DetailInput = {
 export default function (pi: ExtensionAPI) {
   let reviews: Review[] = [];
   let nextReviewId = 1;
+  let lastReviewRef: string | undefined;
   const reviewClient: ReviewClient = createReviewClient(pi);
 
   const reconstructState = (ctx: ExtensionContext) => {
     reviews = [];
     nextReviewId = 1;
+    lastReviewRef = undefined;
 
     for (const entry of ctx.sessionManager.getBranch()) {
+      if (entry.type === "custom" && entry.customType === "annotate-ref") {
+        const ref = entry.data && typeof entry.data === "object" ? (entry.data as { ref?: unknown }).ref : undefined;
+        if (typeof ref === "string" && ref.trim().length > 0) {
+          lastReviewRef = ref;
+        }
+        continue;
+      }
+
       // Tool results from the annotate tool
       if (entry.type === "message") {
         const message = entry.message;
@@ -81,6 +93,9 @@ export default function (pi: ExtensionAPI) {
           }
           if (details?.nextReviewId !== undefined) {
             nextReviewId = details.nextReviewId;
+          }
+          if (details?.lastReviewRef !== undefined) {
+            lastReviewRef = details.lastReviewRef;
           }
         }
         continue;
@@ -95,13 +110,25 @@ export default function (pi: ExtensionAPI) {
         if (details?.nextReviewId !== undefined) {
           nextReviewId = details.nextReviewId;
         }
+        if (details?.lastReviewRef !== undefined) {
+          lastReviewRef = details.lastReviewRef;
+        }
       }
     }
   };
 
-  pi.on("session_start", async (_event, ctx) => reconstructState(ctx));
-  pi.on("session_switch", async (_event, ctx) => reconstructState(ctx));
-  pi.on("session_fork", async (_event, ctx) => reconstructState(ctx));
+  pi.on("session_start", async (_event, ctx) => {
+    reconstructState(ctx);
+    await ensureBaselineRef();
+  });
+  pi.on("session_switch", async (_event, ctx) => {
+    reconstructState(ctx);
+    await ensureBaselineRef();
+  });
+  pi.on("session_fork", async (_event, ctx) => {
+    reconstructState(ctx);
+    await ensureBaselineRef();
+  });
   pi.on("session_tree", async (_event, ctx) => reconstructState(ctx));
 
   pi.registerTool({
@@ -153,7 +180,7 @@ export default function (pi: ExtensionAPI) {
 
   // /annotate slash command
   pi.registerCommand("annotate", {
-    description: "Open annotation review UI for a command or the last assistant message",
+    description: "Open annotation review UI for a command or the latest turn review surface",
     handler: async (args, ctx) => {
       let source: ReviewSourceCommand;
 
@@ -168,17 +195,20 @@ export default function (pi: ExtensionAPI) {
           exitCode: execResult.code
         };
       } else {
-        const assistantText = getLastAssistantText(ctx);
-        if (!assistantText) {
-          ctx.ui.notify("No assistant message found to annotate", "warning");
+        const assistantDiffs = getLastTurnAssistantDiffs(ctx);
+        const codeDiff = await getChangesSinceLastReview();
+
+        if (assistantDiffs.length === 0 && !codeDiff) {
+          ctx.ui.notify("No assistant message or code changes found to annotate", "warning");
           return;
         }
-        const diffContent = textToDiff(assistantText, "assistant-message");
+
+        const contentParts = [codeDiff, ...assistantDiffs].filter((part): part is string => Boolean(part));
         source = {
           kind: "command",
-          title: "assistant message",
+          title: "turn review",
           command: "",
-          content: diffContent,
+          content: contentParts.join("\n"),
           exitCode: 0
         };
       }
@@ -298,6 +328,7 @@ export default function (pi: ExtensionAPI) {
 
     const review = createReview(source, clientResult.versions, clientResult.overallComment);
     reviews.push(review);
+    lastReviewRef = await getCurrentReviewRef();
     return { review, cancelled: false };
   }
 
@@ -350,6 +381,56 @@ export default function (pi: ExtensionAPI) {
       content,
       exitCode: result.code
     };
+  }
+
+  async function ensureBaselineRef() {
+    if (lastReviewRef) {
+      return;
+    }
+
+    const ref = await getCurrentReviewRef();
+    if (!ref) {
+      return;
+    }
+
+    lastReviewRef = ref;
+    pi.appendEntry("annotate-ref", { ref });
+  }
+
+  async function getCurrentReviewRef(): Promise<string | undefined> {
+    const vcs = detectVcs(process.cwd());
+
+    if (vcs === "jj") {
+      const result = await pi.exec("jj", ["log", "-r", "@", "-T", "commit_id", "--no-graph"]);
+      const ref = result.stdout.trim();
+      return result.code === 0 && ref ? ref : undefined;
+    }
+
+    if (vcs === "git") {
+      const result = await pi.exec("git", ["rev-parse", "HEAD"]);
+      const ref = result.stdout.trim();
+      return result.code === 0 && ref ? ref : undefined;
+    }
+
+    return undefined;
+  }
+
+  async function getChangesSinceLastReview(): Promise<string | undefined> {
+    if (!lastReviewRef) {
+      return undefined;
+    }
+
+    const vcs = detectVcs(process.cwd());
+    if (!vcs) {
+      return undefined;
+    }
+
+    const command = vcs === "jj"
+      ? `jj diff --from ${shellQuote(lastReviewRef)} --git`
+      : `git diff ${shellQuote(lastReviewRef)}`;
+    const result = await pi.exec("sh", ["-lc", wrapWithFullContext(command)]);
+    const diff = result.stdout.trim();
+    return result.code === 0 && diff ? diff : undefined;
   }
 
   function createReview(
@@ -410,7 +491,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   function snapshotState(): AnnotateState {
-    return structuredClone({ reviews, nextReviewId });
+    return structuredClone({ reviews, nextReviewId, lastReviewRef });
   }
 }
 
@@ -641,27 +722,62 @@ function previewText(value: string, maxLength: number): string {
   return `${normalized.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
 }
 
-function getLastAssistantText(ctx: ExtensionContext): string | null {
+function getLastTurnAssistantDiffs(ctx: ExtensionContext): string[] {
   const entries = ctx.sessionManager.getBranch();
+  let turnStart = -1;
+
   for (let i = entries.length - 1; i >= 0; i--) {
     const entry = entries[i];
-    if (entry.type !== "message") {
+    if (entry.type === "message" && entry.message.role === "user") {
+      turnStart = i;
+      break;
+    }
+  }
+
+  if (turnStart === -1) {
+    return [];
+  }
+
+  const diffs: string[] = [];
+  let assistantIndex = 1;
+
+  for (let i = turnStart + 1; i < entries.length; i++) {
+    const entry = entries[i];
+    if (entry.type !== "message" || entry.message.role !== "assistant") {
       continue;
     }
 
-    const message = entry.message;
-    if (message.role !== "assistant") {
-      continue;
-    }
-
-    const text = message.content
+    const text = entry.message.content
       .filter((part) => part.type === "text")
       .map((part) => ("text" in part ? part.text : ""))
-      .join("\n");
-    return text.trim() || null;
+      .join("\n\n")
+      .trim();
+
+    if (!text) {
+      continue;
+    }
+
+    diffs.push(textToDiff(text, `assistant-message-${assistantIndex}.md`));
+    assistantIndex += 1;
+  }
+
+  return diffs;
+}
+
+function detectVcs(cwd: string): "jj" | "git" | null {
+  if (existsSync(path.join(cwd, ".jj"))) {
+    return "jj";
+  }
+
+  if (existsSync(path.join(cwd, ".git"))) {
+    return "git";
   }
 
   return null;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
 /**
