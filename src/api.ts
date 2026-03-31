@@ -9,6 +9,7 @@ export interface PiannotatorRequestOptions {
   client: ReviewClient;
   onMessage: BridgeMessageHandler;
   signal?: AbortSignal;
+  onRerunCommand?: (command: string) => Promise<{ content: string; files: ReviewFile[] }>;
 }
 
 export interface PiannotatorUtils {

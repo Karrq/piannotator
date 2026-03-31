@@ -68,3 +68,38 @@ const html = [
 
 await writeFile(distHtml, html, "utf8");
 console.log(`Bundled review UI to ${path.relative(rootDir, distHtml)}`);
+
+// -- CLI bundle (review.mjs) --
+
+const cliEntry = path.join(rootDir, "src/review-cli.ts");
+const distCli = path.join(distDir, "review.mjs");
+
+if (existsSync(cliEntry)) {
+  await build({
+    absWorkingDir: rootDir,
+    bundle: true,
+    entryPoints: [cliEntry],
+    format: "esm",
+    platform: "node",
+    target: ["node18"],
+    external: ["node:*"],
+    banner: { js: "#!/usr/bin/env node" },
+    outfile: distCli,
+    sourcemap: false,
+    // The CLI imports buildReviewWindowHtml and diff-parser; bundle them in.
+    // glimpseui is NOT used by the CLI, so mark it external to avoid pulling
+    // in the native addon (which would fail in non-Glimpse environments).
+    plugins: [{
+      name: "externalize-glimpse",
+      setup(build) {
+        build.onResolve({ filter: /^glimpseui$/ }, () => ({
+          path: "glimpseui",
+          external: true,
+        }));
+      },
+    }],
+  });
+  console.log(`Bundled CLI to ${path.relative(rootDir, distCli)}`);
+} else {
+  console.log("Skipping CLI bundle: src/review-cli.ts is missing.");
+}
