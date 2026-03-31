@@ -17,6 +17,7 @@ interface DiffPanelProps {
   annotations: Annotation[];
   diffStyle: DiffStyle;
   diffFont?: string;
+  diffTheme?: string;
   collapsed: boolean;
   onToggleCollapse: () => void;
   isViewed: boolean;
@@ -39,6 +40,7 @@ export function DiffPanel({
   annotations,
   diffStyle,
   diffFont,
+  diffTheme,
   collapsed,
   onToggleCollapse,
   isViewed,
@@ -226,6 +228,7 @@ export function DiffPanel({
           fileDiff={fileDiff}
           rawDiff={file.rawDiff}
           diffFont={diffFont}
+          diffTheme={diffTheme}
           diffStyle={diffStyle}
           collapsed={collapsed}
           handleGutterClick={handleGutterClick}
@@ -250,6 +253,7 @@ function DiffRenderer({
   fileDiff,
   rawDiff,
   diffFont,
+  diffTheme,
   diffStyle,
   collapsed,
   handleGutterClick,
@@ -262,6 +266,7 @@ function DiffRenderer({
   fileDiff: ReturnType<typeof parseDiffFromFile> | null;
   rawDiff: string;
   diffFont?: string;
+  diffTheme?: string;
   diffStyle: DiffStyle;
   collapsed: boolean;
   handleGutterClick: (range: SelectedLineRange) => void;
@@ -271,10 +276,13 @@ function DiffRenderer({
   renderHeaderPrefix: (props: RenderHeaderMetadataProps) => React.ReactNode;
   renderHeaderMetadata: (props: RenderHeaderMetadataProps) => React.ReactNode;
 }) {
-  const style = diffFont ? { "--diffs-font-family": diffFont } as React.CSSProperties : undefined;
+  const style: React.CSSProperties | undefined = diffFont
+    ? { "--diffs-font-family": diffFont } as React.CSSProperties
+    : undefined;
   const options = {
     diffStyle,
     themeType: "dark" as const,
+    ...(diffTheme ? { theme: diffTheme } : undefined),
     overflow: "wrap" as const,
     hunkSeparators: "line-info" as const,
     enableGutterUtility: true,

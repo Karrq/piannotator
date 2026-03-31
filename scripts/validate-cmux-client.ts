@@ -145,13 +145,17 @@ const rerunResult = await rerunClient.requestReview(
     files: []
   },
   {
-    async onRerunCommand(command) {
-      rerunCalls += 1;
-      assert.equal(command, "git diff HEAD~1");
-      return {
-        content: "updated diff",
-        files: []
-      };
+    async onMessage(msg: any) {
+      if (msg.type === "rerun") {
+        rerunCalls += 1;
+        assert.equal(msg.command, "git diff HEAD~1");
+        return {
+          type: "update" as const,
+          content: "updated diff",
+          files: []
+        };
+      }
+      return null;
     }
   }
 );

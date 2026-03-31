@@ -56,6 +56,9 @@ root.render(
     onRerunCommand: (command: string) => {
       window.glimpse?.send({ type: "rerun", command });
     },
+    onSendMessage: (msg) => {
+      window.glimpse?.send(msg);
+    },
     onExtensionMessage: (listener) => {
       extensionMessageListeners.push(listener);
       return () => {

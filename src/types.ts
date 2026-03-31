@@ -131,12 +131,28 @@ export interface ReviewBridgeRerunMessage {
   command: string;
 }
 
-export type ReviewBridgeMessage = ReviewBridgeSubmitMessage | ReviewBridgeCancelMessage | ReviewBridgeRerunMessage;
+export interface ReviewBridgeListTimelineMessage {
+  type: "list-timeline";
+}
+
+export interface ReviewBridgeTurnMessagesMessage {
+  type: "turn-messages";
+  fromIndex: number;
+  toIndex: number;
+}
+
+export type ReviewBridgeMessage =
+  | ReviewBridgeSubmitMessage
+  | ReviewBridgeCancelMessage
+  | ReviewBridgeRerunMessage
+  | ReviewBridgeListTimelineMessage
+  | ReviewBridgeTurnMessagesMessage;
 
 export interface ReviewBridgeUpdateMessage {
   type: "update";
   content: string;
   files: ReviewFile[];
+  title?: string;
 }
 
 export interface ReviewBridgeRerunErrorMessage {
@@ -144,7 +160,44 @@ export interface ReviewBridgeRerunErrorMessage {
   error: string;
 }
 
-export type ReviewBridgeExtensionMessage = ReviewBridgeUpdateMessage | ReviewBridgeRerunErrorMessage;
+export interface ReviewBridgeTimelineMessage {
+  type: "timeline";
+  items: TimelineItem[];
+  vcsType: "git" | "jj" | null;
+  baselineRef: string | undefined;
+}
+
+export interface ReviewBridgeTurnMessagesResultMessage {
+  type: "turn-messages-result";
+  content: string;
+}
+
+export type ReviewBridgeExtensionMessage =
+  | ReviewBridgeUpdateMessage
+  | ReviewBridgeRerunErrorMessage
+  | ReviewBridgeTimelineMessage
+  | ReviewBridgeTurnMessagesResultMessage;
+
+export interface TimelineTurnItem {
+  kind: "turn";
+  timestamp: string;
+  preview: string;
+  fullText: string;
+  ref?: string;
+}
+
+export interface TimelineReviewItem {
+  kind: "review";
+  reviewId: string;
+  timestamp: string;
+  ref?: string;
+  title?: string;
+  annotationCount?: number;
+  annotationSummaries?: string[];
+  overallComment?: string;
+}
+
+export type TimelineItem = TimelineTurnItem | TimelineReviewItem;
 
 export function truncateAnnotationSummary(comment: string, limit = ANNOTATION_SUMMARY_LIMIT): string {
   const normalized = comment.replace(/\s+/g, " ").trim();

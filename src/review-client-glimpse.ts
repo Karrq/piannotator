@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { open, prompt } from "glimpseui";
 import type { ReviewClient, ReviewClientOptions } from "./review-client.js";
-import type { ReviewBridgeInit, ReviewBridgeMessage, ReviewClientRequest, ReviewClientResult } from "./types.js";
+import type { ReviewBridgeExtensionMessage, ReviewBridgeInit, ReviewBridgeMessage, ReviewClientRequest, ReviewClientResult } from "./types.js";
 
 
 const REVIEW_UI_BOOTSTRAP_MARKER = "<!-- PIANNOTATOR_BOOTSTRAP -->";
@@ -192,20 +192,22 @@ async function promptWithReloadableFile(
 
     win.on("message", async (data) => {
       const msg = data as ReviewBridgeMessage;
-      if (msg.type === "rerun" && options?.onRerunCommand) {
+      if (msg.type === "submit" || msg.type === "cancel") {
+        win.close();
+        resolveOnce(msg);
+        return;
+      }
+      if (options?.onMessage) {
         try {
-          const result = await options.onRerunCommand(msg.command);
-          const payload = JSON.stringify({ type: "update", content: result.content, files: result.files });
-          win.send(`window.__PIANNOTATOR_RECEIVE__(${payload})`);
+          const response = await options.onMessage(msg);
+          if (response) {
+            const payload = JSON.stringify(response);
+            win.send(`window.__PIANNOTATOR_RECEIVE__(${payload})`);
+          }
         } catch (err) {
           const payload = JSON.stringify({ type: "rerun-error", error: String(err) });
           win.send(`window.__PIANNOTATOR_RECEIVE__(${payload})`);
         }
-        return;
-      }
-      if (msg.type === "submit" || msg.type === "cancel") {
-        win.close();
-        resolveOnce(msg);
       }
     });
 

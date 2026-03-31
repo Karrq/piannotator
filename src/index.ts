@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { BorderedLoader, findTurnStartIndex, type ExtensionAPI, type ExtensionContext, type ExtensionCommandContext, type SessionEntry, type Theme } from "@mariozechner/pi-coding-agent";
+import { BorderedLoader, type ExtensionAPI, type ExtensionContext, type ExtensionCommandContext, type SessionEntry, type Theme } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
@@ -19,12 +19,15 @@ import {
   type Annotation,
   type AnnotationDraft,
   type Review,
+  type ReviewBridgeExtensionMessage,
+  type ReviewBridgeMessage,
   type ReviewBridgeVersion,
   type ReviewClientRequest,
   type ReviewFile,
   type ReviewSource,
   type ReviewSourceCommand,
-  type ReviewVersion
+  type ReviewVersion,
+  type TimelineItem
 } from "./types.js";
 
 const AnnotateParamsSchema = Type.Object(
@@ -53,7 +56,7 @@ type AnnotateParams = Static<typeof AnnotateParamsSchema>;
 
 type RequestInput = {
   action: "request";
-  command: string;
+  command?: string;
   title?: string;
 };
 
@@ -67,18 +70,30 @@ export default function (pi: ExtensionAPI) {
   let reviews: Review[] = [];
   let nextReviewId = 1;
   let lastReviewRef: string | undefined;
+  /** VCS refs captured at the end of each turn, ordered chronologically. */
+  let turnRefs: string[] = [];
   const reviewClient: ReviewClient = createReviewClient(pi);
 
   const reconstructState = (ctx: ExtensionContext) => {
     reviews = [];
     nextReviewId = 1;
     lastReviewRef = undefined;
+    turnRefs = [];
 
-    for (const entry of ctx.sessionManager.getBranch()) {
+    for (const entry of ctx.sessionManager.getBranch() as SessionEntry[]) {
       if (entry.type === "custom" && entry.customType === "annotate-ref") {
         const ref = entry.data && typeof entry.data === "object" ? (entry.data as { ref?: unknown }).ref : undefined;
         if (typeof ref === "string" && ref.trim().length > 0) {
           lastReviewRef = ref;
+        }
+        continue;
+      }
+
+      if (entry.type === "custom" && entry.customType === "annotate-turn-ref") {
+        const data = entry.data as { ref?: unknown } | undefined;
+        const ref = data && typeof data === "object" ? data.ref : undefined;
+        if (typeof ref === "string" && ref.trim().length > 0) {
+          turnRefs.push(ref);
         }
         continue;
       }
@@ -131,20 +146,29 @@ export default function (pi: ExtensionAPI) {
   });
   pi.on("session_tree", async (_event, ctx) => reconstructState(ctx));
 
+  pi.on("turn_end", async () => {
+    const ref = await getCurrentReviewRef();
+    if (ref !== undefined) {
+      turnRefs.push(ref);
+      pi.appendEntry("annotate-turn-ref", { ref });
+    }
+  });
+
   pi.registerTool({
     name: "annotate",
     label: "Annotate",
-    description: "Request user annotations on command output, then retrieve annotation details.",
+    description: "Request user annotations on command output or recent changes, then retrieve annotation details.",
     promptSnippet: "Request user annotations with GitHub-style refs, then retrieve detail without returning full source content.",
     promptGuidelines: [
       "Use annotate.request to ask the user for annotations on command output.",
+      "Use annotate.request without a command to review all changes since the last review.",
       "The request result includes an annotation overview. Use annotate.detail to get full context for a specific annotation.",
       "Use annotate.detail with annotationIds like [\"A1\"] or ranges like [\"A1..A3\"] to get context for annotations.",
       "Prefer command mode when the content should stay out of the model context."
     ],
     parameters: AnnotateParamsSchema,
 
-    async execute(_toolCallId, params, signal) {
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       switch (params.action) {
         case "request": {
           const request = parseRequestInput(params);
@@ -152,7 +176,7 @@ export default function (pi: ExtensionAPI) {
             return createResult("request", request.error, { error: request.error });
           }
 
-          return handleRequest(request, signal);
+          return handleRequest(request, signal, ctx);
         }
         case "detail": {
           const detail = parseDetailInput(params);
@@ -195,22 +219,12 @@ export default function (pi: ExtensionAPI) {
           exitCode: execResult.code
         };
       } else {
-        const assistantDiff = getLastTurnAssistantDiff(ctx);
-        const codeDiff = await getChangesSinceLastReview();
-
-        if (!assistantDiff && !codeDiff) {
+        const defaultSource = await buildDefaultReviewSource(ctx);
+        if (!defaultSource) {
           ctx.ui.notify("No assistant message or code changes found to annotate", "warning");
           return;
         }
-
-        const contentParts = [codeDiff, assistantDiff].filter((part): part is string => Boolean(part));
-        source = {
-          kind: "command",
-          title: "turn review",
-          command: "",
-          content: contentParts.join("\n"),
-          exitCode: 0
-        };
+        source = defaultSource;
       }
 
       const result = await executeCommandReview(ctx, source);
@@ -258,7 +272,7 @@ export default function (pi: ExtensionAPI) {
     source: ReviewSourceCommand
   ): Promise<{ review: Review; cancelled: false } | { cancelled: true }> {
     if (!ctx.hasUI) {
-      return executeReview(source);
+      return executeReview(source, undefined, ctx);
     }
 
     const abortController = new AbortController();
@@ -280,7 +294,7 @@ export default function (pi: ExtensionAPI) {
         done(value);
       };
 
-      void executeReview(source, abortController.signal).then(
+      void executeReview(source, abortController.signal, ctx).then(
         (value) => finish(value),
         (error) => finish({ error })
       );
@@ -302,7 +316,8 @@ export default function (pi: ExtensionAPI) {
 
   async function executeReview(
     source: ReviewSourceCommand,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    ctx?: ExtensionContext
   ): Promise<{ review: Review; cancelled: false } | { cancelled: true }> {
     const files = isUnifiedDiff(source.content) ? parseDiff(source.content) : [];
     const clientRequest: ReviewClientRequest = {
@@ -314,12 +329,9 @@ export default function (pi: ExtensionAPI) {
 
     const clientResult = await reviewClient.requestReview(clientRequest, {
       signal,
-      onRerunCommand: async (command: string) => {
-        const rerunResult = await pi.exec("sh", ["-lc", wrapWithFullContext(command)], { signal });
-        const content = combineCommandOutput(rerunResult.stdout, rerunResult.stderr, rerunResult.code);
-        const newFiles = isUnifiedDiff(content) ? parseDiff(content) : [];
-        return { content, files: newFiles };
-      }
+      onMessage: ctx
+        ? (msg) => handleBridgeMessage(msg, ctx, signal)
+        : undefined
     });
 
     if (clientResult === null) {
@@ -332,9 +344,21 @@ export default function (pi: ExtensionAPI) {
     return { review, cancelled: false };
   }
 
-  async function handleRequest(params: RequestInput, signal: AbortSignal | undefined) {
-    const source = await loadReviewSource(params, signal);
-    const result = await executeReview(source, signal);
+  async function handleRequest(params: RequestInput, signal: AbortSignal | undefined, ctx?: ExtensionContext) {
+    let source: ReviewSourceCommand;
+    if (params.command) {
+      source = await loadReviewSource({ ...params, command: params.command }, signal);
+    } else {
+      const defaultSource = ctx ? await buildDefaultReviewSource(ctx) : undefined;
+      if (!defaultSource) {
+        return createResult("request", "No assistant messages or code changes found to review.", {
+          error: "no changes found"
+        });
+      }
+      source = defaultSource;
+    }
+
+    const result = await executeReview(source, signal, ctx);
 
     if (result.cancelled) {
       return createResult("request", "User cancelled the review.", { cancelled: true });
@@ -369,7 +393,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   async function loadReviewSource(
-    params: RequestInput,
+    params: { command: string; title?: string },
     signal: AbortSignal | undefined
   ): Promise<ReviewSourceCommand> {
     const result = await pi.exec("sh", ["-lc", wrapWithFullContext(params.command)], { signal });
@@ -415,7 +439,7 @@ export default function (pi: ExtensionAPI) {
     return undefined;
   }
 
-  async function getChangesSinceLastReview(): Promise<string | undefined> {
+  async function getChangesSinceLastReview(): Promise<{ diff: string; command: string } | undefined> {
     if (!lastReviewRef) {
       return undefined;
     }
@@ -430,7 +454,7 @@ export default function (pi: ExtensionAPI) {
       : `git diff ${shellQuote(lastReviewRef)}`;
     const result = await pi.exec("sh", ["-lc", wrapWithFullContext(command)]);
     const diff = result.stdout.trim();
-    return result.code === 0 && diff ? diff : undefined;
+    return result.code === 0 && diff ? { diff, command } : undefined;
   }
 
   function createReview(
@@ -493,13 +517,221 @@ export default function (pi: ExtensionAPI) {
   function snapshotState(): AnnotateState {
     return structuredClone({ reviews, nextReviewId, lastReviewRef });
   }
+
+  async function buildDefaultReviewSource(ctx: ExtensionContext): Promise<ReviewSourceCommand | undefined> {
+    const entries = ctx.sessionManager.getBranch() as SessionEntry[];
+    const lastReviewIndex = findLastReviewEntryIndex(entries);
+    const assistantDiff = getAssistantMessagesSinceIndex(entries, lastReviewIndex);
+    const codeResult = await getChangesSinceLastReview();
+
+    if (!assistantDiff && !codeResult) {
+      return undefined;
+    }
+
+    const contentParts = [codeResult?.diff, assistantDiff].filter((part): part is string => Boolean(part));
+    const command = codeResult?.command ?? "";
+    return {
+      kind: "command",
+      title: command || "turn review",
+      command,
+      content: contentParts.join("\n"),
+      exitCode: 0
+    };
+  }
+
+  /** Internal timeline item with entry indices for mapping back to session data. */
+  type InternalTimelineItem =
+    | { kind: "turn"; timestamp: string; preview: string; fullText: string; ref?: string; entryIndex: number }
+    | { kind: "review"; reviewId: string; timestamp: string; ref?: string; title?: string; annotationCount?: number; annotationSummaries?: string[]; overallComment?: string; entryIndex: number };
+
+  /** Cached internal timeline from the last list-timeline request. */
+  let cachedTimeline: InternalTimelineItem[] | null = null;
+
+  function buildInternalTimeline(ctx: ExtensionContext): InternalTimelineItem[] {
+    const entries = ctx.sessionManager.getBranch() as SessionEntry[];
+    const items: InternalTimelineItem[] = [];
+    const reviewTimestamps = new Map<string, string>();
+    const emittedReviews = new Set<string>();
+
+    for (const review of reviews) {
+      reviewTimestamps.set(review.id, review.createdAt);
+    }
+
+    // Track the current turn so we can associate turn-ref entries with it
+    let currentTurnIndex = -1;
+
+    for (let ei = 0; ei < entries.length; ei++) {
+      const entry = entries[ei];
+
+      // User messages mark turns
+      if (entry.type === "message" && entry.message.role === "user") {
+        const content = entry.message.content;
+        const fullText = typeof content === "string"
+          ? content.trim()
+          : (content as Array<{ type: string; text?: string }>)
+              .filter((part) => part.type === "text")
+              .map((part) => part.text ?? "")
+              .join(" ")
+              .trim();
+
+        const preview = fullText.length > 100 ? fullText.slice(0, 97) + "..." : fullText;
+
+        currentTurnIndex = items.length;
+        items.push({
+          kind: "turn",
+          timestamp: entry.timestamp,
+          preview,
+          fullText,
+          ref: undefined,
+          entryIndex: ei
+        });
+        continue;
+      }
+
+      // Turn ref entries - associate with the most recent turn
+      if (entry.type === "custom" && entry.customType === "annotate-turn-ref") {
+        const data = entry.data as { ref?: unknown } | undefined;
+        const ref = data && typeof data === "object" ? data.ref : undefined;
+        if (typeof ref === "string" && ref.trim().length > 0 && currentTurnIndex >= 0) {
+          const turn = items[currentTurnIndex];
+          if (turn.kind === "turn") {
+            turn.ref = ref;
+          }
+        }
+        continue;
+      }
+
+      // Review completion entries
+      const reviewId = extractReviewIdFromEntry(entry);
+      if (reviewId && !emittedReviews.has(reviewId)) {
+        emittedReviews.add(reviewId);
+        // Extract the VCS ref at review time from the stored state
+        const reviewRef = extractReviewRef(entry);
+        const review = reviews.find((r) => r.id === reviewId);
+        items.push({
+          kind: "review",
+          reviewId,
+          timestamp: reviewTimestamps.get(reviewId) ?? entry.timestamp,
+          ref: reviewRef,
+          title: review?.title,
+          annotationCount: review?.annotations.length,
+          annotationSummaries: review?.annotations.slice(0, 5).map((a) =>
+            `${formatAnnotationReference(a)} - "${truncateAnnotationSummary(a.comment)}"`
+          ),
+          overallComment: review?.overallComment,
+          entryIndex: ei
+        });
+      }
+    }
+
+    return items;
+  }
+
+  /** Convert internal timeline to the bridge format sent to the UI. */
+  function toTimelineItems(internal: InternalTimelineItem[]): TimelineItem[] {
+    return internal.map((item): TimelineItem => {
+      if (item.kind === "turn") {
+        return { kind: "turn", timestamp: item.timestamp, preview: item.preview, fullText: item.fullText, ref: item.ref };
+      }
+      return {
+        kind: "review",
+        reviewId: item.reviewId,
+        timestamp: item.timestamp,
+        ref: item.ref,
+        title: item.title,
+        annotationCount: item.annotationCount,
+        annotationSummaries: item.annotationSummaries,
+        overallComment: item.overallComment
+      };
+    });
+  }
+
+  async function handleBridgeMessage(
+    msg: ReviewBridgeMessage,
+    ctx: ExtensionContext,
+    signal?: AbortSignal
+  ): Promise<ReviewBridgeExtensionMessage | null> {
+    switch (msg.type) {
+      case "rerun": {
+        try {
+          const result = await pi.exec("sh", ["-lc", wrapWithFullContext(msg.command)], { signal });
+          const content = combineCommandOutput(result.stdout, result.stderr, result.code);
+          const files = isUnifiedDiff(content) ? parseDiff(content) : [];
+          return { type: "update", content, files };
+        } catch (err) {
+          return { type: "rerun-error", error: String(err) };
+        }
+      }
+      case "list-timeline": {
+        cachedTimeline = buildInternalTimeline(ctx);
+        return {
+          type: "timeline",
+          items: toTimelineItems(cachedTimeline),
+          vcsType: detectVcs(process.cwd()),
+          baselineRef: lastReviewRef
+        };
+      }
+      case "turn-messages": {
+        try {
+          const internal = cachedTimeline ?? buildInternalTimeline(ctx);
+          cachedTimeline = internal;
+          const entries = ctx.sessionManager.getBranch() as SessionEntry[];
+
+          const firstItem = internal[msg.fromIndex];
+          const lastItem = internal[msg.toIndex];
+          if (!firstItem || !lastItem) {
+            return { type: "turn-messages-result", content: "" };
+          }
+
+          const fromEntryIndex = firstItem.entryIndex;
+          let toEntryIndex = lastItem.entryIndex;
+          for (let i = toEntryIndex + 1; i < entries.length; i++) {
+            const e = entries[i];
+            if (e.type === "message" && e.message.role === "user") break;
+            toEntryIndex = i;
+          }
+
+          const assistantDiff = getAssistantMessagesInRange(entries, fromEntryIndex, toEntryIndex);
+          return { type: "turn-messages-result", content: assistantDiff ?? "" };
+        } catch (err) {
+          return { type: "rerun-error", error: String(err) };
+        }
+      }
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * VCS diff between two refs. When toRef is undefined, diffs against the
+   * working copy (current state). This matters for jj where the latest
+   * commit_id may have been rewritten - omitting --to diffs to the live
+   * working copy instead of a potentially stale commit.
+   */
+  async function getVcsDiff(fromRef: string, toRef?: string): Promise<{ diff: string; command: string } | undefined> {
+    const vcs = detectVcs(process.cwd());
+    if (!vcs) {
+      return undefined;
+    }
+
+    let command: string;
+    if (vcs === "jj") {
+      command = toRef
+        ? `jj diff --from ${shellQuote(fromRef)} --to ${shellQuote(toRef)} --git`
+        : `jj diff --from ${shellQuote(fromRef)} --git`;
+    } else {
+      command = toRef
+        ? `git diff ${shellQuote(fromRef)} ${shellQuote(toRef)}`
+        : `git diff ${shellQuote(fromRef)}`;
+    }
+
+    const result = await pi.exec("sh", ["-lc", wrapWithFullContext(command)]);
+    const diff = result.stdout.trim();
+    return result.code === 0 && diff ? { diff, command } : undefined;
+  }
 }
 
 function parseRequestInput(params: AnnotateParams): RequestInput | { error: string } {
-  if (params.command === undefined) {
-    return { error: "annotate.request requires a command." };
-  }
-
   return {
     action: "request",
     command: params.command,
@@ -722,21 +954,75 @@ function previewText(value: string, maxLength: number): string {
   return `${normalized.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
 }
 
-function getLastTurnAssistantDiff(ctx: ExtensionContext): string | null {
-  const entries = ctx.sessionManager.getBranch() as SessionEntry[];
-  if (entries.length === 0) {
-    return null;
+/**
+ * Find the index of the last entry in the branch that completed a review.
+ * Returns -1 if no review has been completed.
+ */
+function findLastReviewEntryIndex(entries: SessionEntry[]): number {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    if (extractReviewIdFromEntry(entries[i]) !== undefined) {
+      return i;
+    }
   }
+  return -1;
+}
 
-  const turnStart = findTurnStartIndex(entries, entries.length - 1, 0);
-  if (turnStart === -1) {
-    return null;
+/**
+ * Extract a review ID from an entry if it represents a completed review.
+ * Returns the most recently added review ID, or undefined.
+ */
+function extractReviewIdFromEntry(entry: SessionEntry): string | undefined {
+  if (entry.type === "message" && entry.message.role === "toolResult" && entry.message.toolName === "annotate") {
+    const details = entry.message.details as AnnotateToolDetails | undefined;
+    if (details?.review?.id) {
+      return details.review.id;
+    }
   }
+  if (entry.type === "custom_message" && entry.customType === "annotate") {
+    const details = entry.details as AnnotateState | undefined;
+    if (details?.reviews && details.reviews.length > 0) {
+      return details.reviews[details.reviews.length - 1].id;
+    }
+  }
+  return undefined;
+}
 
+/**
+ * Extract the VCS ref stored at review time from an entry's state snapshot.
+ */
+function extractReviewRef(entry: SessionEntry): string | undefined {
+  if (entry.type === "message" && entry.message.role === "toolResult" && entry.message.toolName === "annotate") {
+    const details = entry.message.details as AnnotateToolDetails | undefined;
+    return details?.lastReviewRef;
+  }
+  if (entry.type === "custom_message" && entry.customType === "annotate") {
+    const details = entry.details as AnnotateState | undefined;
+    return details?.lastReviewRef;
+  }
+  return undefined;
+}
+
+/**
+ * Collect assistant messages from entries starting after `fromIndex` to end of array.
+ * If fromIndex is -1, collects from the start.
+ */
+function getAssistantMessagesSinceIndex(entries: SessionEntry[], fromIndex: number): string | null {
+  const start = fromIndex === -1 ? 0 : fromIndex + 1;
+  return collectAssistantMessages(entries, start, entries.length);
+}
+
+/**
+ * Collect assistant messages in a specific entry range (inclusive on both ends).
+ */
+function getAssistantMessagesInRange(entries: SessionEntry[], from: number, to: number): string | null {
+  return collectAssistantMessages(entries, from, to + 1);
+}
+
+function collectAssistantMessages(entries: SessionEntry[], startIndex: number, endIndex: number): string | null {
   const sections: string[] = [];
   let assistantIndex = 1;
 
-  for (let i = turnStart + 1; i < entries.length; i++) {
+  for (let i = startIndex; i < endIndex; i++) {
     const entry = entries[i];
     if (entry.type !== "message" || entry.message.role !== "assistant") {
       continue;
@@ -762,6 +1048,9 @@ function getLastTurnAssistantDiff(ctx: ExtensionContext): string | null {
 
   return textToDiff(sections.join("\n\n"), "assistant-messages.md");
 }
+
+
+
 
 function formatAssistantMessageHeading(timestamp: unknown, assistantIndex: number): string {
   if (typeof timestamp === "string") {

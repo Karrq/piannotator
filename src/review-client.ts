@@ -1,8 +1,10 @@
-import type { ReviewClientRequest, ReviewClientResult, ReviewFile } from "./types.js";
+import type { ReviewBridgeExtensionMessage, ReviewBridgeMessage, ReviewClientRequest, ReviewClientResult } from "./types.js";
+
+export type BridgeMessageHandler = (msg: ReviewBridgeMessage) => Promise<ReviewBridgeExtensionMessage | null>;
 
 export interface ReviewClientOptions {
   signal?: AbortSignal;
-  onRerunCommand?: (command: string) => Promise<{ content: string; files: ReviewFile[] }>;
+  onMessage?: BridgeMessageHandler;
 }
 
 export interface ReviewClient {

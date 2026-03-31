@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ReviewBanner } from "./ReviewBanner.js";
 import { ReviewView } from "./ReviewView.js";
+import { ScopeSelector } from "./ScopeSelector.js";
 import { annotationsToDrafts, materializeAnnotation, removeAnnotation, updateAnnotationComment } from "./annotation-state.js";
+import { isUnifiedDiff, parseDiff } from "../diff-parser.js";
+import { getCustomCSSStyles, getThemePalette, THEME_OPTIONS } from "./diff-colorscheme.js";
 import {
   formatAnnotationReference,
   truncateAnnotationSummary,
@@ -9,8 +12,10 @@ import {
   type AnnotationDraft,
   type ReviewBridgeExtensionMessage,
   type ReviewBridgeInit,
+  type ReviewBridgeMessage,
   type ReviewBridgeVersion,
-  type ReviewFile
+  type ReviewFile,
+  type TimelineItem
 } from "../types.js";
 
 interface AppProps {
@@ -18,6 +23,7 @@ interface AppProps {
   onSubmit: (versions: ReviewBridgeVersion[], overallComment?: string) => void;
   onCancel: () => void;
   onRerunCommand?: (command: string) => void;
+  onSendMessage?: (msg: ReviewBridgeMessage) => void;
   onExtensionMessage?: (listener: (msg: ReviewBridgeExtensionMessage) => void) => () => void;
 }
 
@@ -34,7 +40,7 @@ interface ReviewTab {
 
 type PendingFinalAction = "submit" | "cancel" | null;
 
-export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessage }: AppProps) {
+export function App({ init, onSubmit, onCancel, onRerunCommand, onSendMessage, onExtensionMessage }: AppProps) {
   const [tabs, setTabs] = useState<ReviewTab[]>([]);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [pendingFinalAction, setPendingFinalAction] = useState<PendingFinalAction>(null);
@@ -46,8 +52,37 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
   editingCommandRef.current = editingCommand;
   const [commandError, setCommandError] = useState<string | null>(null);
   const [commandRunning, setCommandRunning] = useState(false);
-  const [pendingRerun, setPendingRerun] = useState(false);
   const [diffFont, setDiffFont] = useState(() => localStorage.getItem("piannotator-diff-font") || "");
+  const [diffTheme, setDiffTheme] = useState(() =>
+    localStorage.getItem("piannotator-diff-theme") || ""
+  );
+  const [customThemeName, setCustomThemeName] = useState(() =>
+    localStorage.getItem("piannotator-diff-theme-custom") || ""
+  );
+  const [customCSS, setCustomCSS] = useState(() =>
+    localStorage.getItem("piannotator-diff-custom-css") || ""
+  );
+  const [timeline, setTimeline] = useState<TimelineItem[] | null>(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [showScopeSelector, setShowScopeSelector] = useState(false);
+  const [scopeLoading, setScopeLoading] = useState(false);
+  const scopeLoadingRef = useRef(false);
+  scopeLoadingRef.current = scopeLoading;
+  const [showEditCommand, setShowEditCommand] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(false);
+  const [vcsType, setVcsType] = useState<"git" | "jj" | null>(null);
+  const [baselineRef, setBaselineRef] = useState<string | undefined>(undefined);
+
+  // Composed rerun + turn-messages flow state.
+  // Phase 1: rerun sent, waiting for update. Phase 2: turn-messages sent, waiting for result.
+  const pendingScopeRef = useRef<{
+    command: string;
+    phase: "rerun" | "turn-messages";
+    fromIndex: number;
+    toIndex: number;
+    rerunContent?: string;
+    rerunFiles?: ReviewFile[];
+  } | null>(null);
 
 
   // Create initial tab on mount
@@ -118,17 +153,38 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
   const openSubmitConfirmation = () => setPendingFinalAction("submit");
   const openCancelConfirmation = () => setPendingFinalAction("cancel");
 
-  // Listen for extension-to-UI messages (update/rerun-error)
+  // Listen for extension-to-UI messages (update/rerun-error/timeline)
   useEffect(() => {
     if (!onExtensionMessage) return;
     return onExtensionMessage((msg) => {
       if (msg.type === "update") {
-        addTab(editingCommandRef.current, msg.content, msg.files);
-        setCommandRunning(false);
-        setCommandError(null);
+        const pending = pendingScopeRef.current;
+        if (pending && pending.phase === "rerun" && onSendMessage) {
+          // Phase 1 complete - store rerun result, start phase 2
+          pending.rerunContent = msg.content;
+          pending.rerunFiles = msg.files;
+          pending.phase = "turn-messages";
+          onSendMessage({ type: "turn-messages", fromIndex: pending.fromIndex, toIndex: pending.toIndex });
+        } else {
+          // Regular rerun from edit command
+          const title = "title" in msg ? (msg as { title?: string }).title : undefined;
+          addTab(title || editingCommandRef.current, msg.content, msg.files);
+          setCommandRunning(false);
+          setCommandError(null);
+          setShowEditCommand(false);
+        }
       } else if (msg.type === "rerun-error") {
         setCommandRunning(false);
         setCommandError(msg.error);
+        setScopeLoading(false);
+        pendingScopeRef.current = null;
+      } else if (msg.type === "timeline") {
+        setTimeline(msg.items);
+        setVcsType(msg.vcsType);
+        setBaselineRef(msg.baselineRef);
+        setTimelineLoading(false);
+      } else if (msg.type === "turn-messages-result") {
+        handleTurnMessagesResult(msg.content);
       }
     });
   }, [onExtensionMessage]);
@@ -151,10 +207,15 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
       if (event.key === "Escape") {
         event.preventDefault();
 
-        if (showSettings) {
-          setShowSettings(false);
+        if (showScopeSelector) {
+          setShowScopeSelector(false);
+        } else if (showEditCommand) {
+          setShowEditCommand(false);
           setCommandError(null);
-          setPendingRerun(false);
+        } else if (pendingDelete) {
+          setPendingDelete(false);
+        } else if (showSettings) {
+          setShowSettings(false);
         } else if (pendingFinalAction !== null) {
           dismissConfirmation();
         } else {
@@ -268,7 +329,6 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
 
   const executeRerun = () => {
     if (!onRerunCommand || commandRunning) return;
-    setPendingRerun(false);
     setCommandError(null);
     setCommandRunning(true);
     onRerunCommand(editingCommand);
@@ -276,8 +336,39 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
 
   const handleRunCommand = () => {
     if (!onRerunCommand || commandRunning) return;
-    // No confirmation needed since tabs preserve existing annotations
     executeRerun();
+  };
+
+  /** Start the composed rerun + turn-messages flow from the scope selector. */
+  const handleScopedReview = (command: string, fromIndex: number, toIndex: number) => {
+    if (!onSendMessage) return;
+    setScopeLoading(true);
+    pendingScopeRef.current = {
+      command,
+      phase: "rerun",
+      fromIndex,
+      toIndex
+    };
+    // Phase 1: send rerun. On response, phase 2 sends turn-messages.
+    // Sequential to avoid cmux outbox overwrite and Glimpse race conditions.
+    onSendMessage({ type: "rerun", command });
+  };
+
+  /** Handle the turn-messages-result response during a composed scope flow. */
+  const handleTurnMessagesResult = (content: string) => {
+    const pending = pendingScopeRef.current;
+    if (!pending || pending.phase !== "turn-messages") return;
+    pendingScopeRef.current = null;
+
+    const contentParts = [pending.rerunContent, content].filter(
+      (part): part is string => Boolean(part?.trim())
+    );
+    const combinedContent = contentParts.length > 0 ? contentParts.join("\n") : "(no changes in selected range)";
+    const combinedFiles = isUnifiedDiff(combinedContent) ? parseDiff(combinedContent) : [];
+
+    addTab(pending.command, combinedContent, combinedFiles);
+    setScopeLoading(false);
+    setShowScopeSelector(false);
   };
 
   const modalTitle = pendingFinalAction === "submit" ? "Submit review?" : "Discard review?";
@@ -292,8 +383,14 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
     return <div className="piannotator-shell" />;
   }
 
+  const resolvedTheme = diffTheme === "custom" ? customThemeName : diffTheme;
+  const shellStyle: React.CSSProperties = {
+    ...getThemePalette(resolvedTheme),
+    ...getCustomCSSStyles(customCSS),
+  } as React.CSSProperties;
+
   return (
-    <div className="piannotator-shell">
+    <div className="piannotator-shell" style={shellStyle}>
       <ReviewBanner
         title={init.title}
         activeAnnotationCount={activeTab.annotations.length}
@@ -302,13 +399,16 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
         onDiffModeChange={setDiffMode}
         totalFiles={activeTab.files.length}
         viewedCount={activeTab.viewedFiles.size}
-        onOpenSettings={() => { setEditingCommand(activeTab.command); setShowSettings(true); }}
+        onOpenSettings={() => { setShowSettings(true); }}
         onSubmit={openSubmitConfirmation}
         onCancel={openCancelConfirmation}
         onClear={clearAnnotations}
         tabs={tabs.map((tab) => ({ id: tab.id, command: tab.command, annotationCount: tab.annotations.length }))}
         activeTabIndex={activeTabIndex}
         onTabChange={setActiveTabIndex}
+        onNewVersion={() => setShowScopeSelector(true)}
+        onEditCommand={() => { setEditingCommand(activeTab.command); setShowEditCommand(true); }}
+        onDeleteTab={() => setPendingDelete(true)}
       />
       {pendingFinalAction !== null ? (
         <div className="review-modal" role="presentation" onClick={dismissConfirmation}>
@@ -343,7 +443,7 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
         </div>
       ) : null}
       {showSettings && (
-        <div className="review-modal" role="presentation" onClick={() => { setShowSettings(false); setCommandError(null); }}>
+        <div className="review-modal" role="presentation" onClick={() => setShowSettings(false)}>
           <div
             className="review-modal__dialog review-modal__dialog--settings"
             role="dialog"
@@ -353,17 +453,6 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
           >
             <div id="settings-modal-title" className="review-modal__title">
               Settings
-            </div>
-            <div className="settings-modal__field">
-              <label className="settings-modal__label" htmlFor="settings-command">Command</label>
-              <textarea
-                id="settings-command"
-                className="settings-modal__command"
-                value={editingCommand}
-                onChange={(e) => setEditingCommand(e.target.value)}
-                rows={2}
-                disabled={commandRunning}
-              />
             </div>
             <div className="settings-modal__field">
               <label className="settings-modal__label" htmlFor="settings-font">Diff font family</label>
@@ -384,22 +473,118 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
                 placeholder="e.g. JetBrains Mono, Fira Code, monospace"
               />
             </div>
+            <div className="settings-modal__field">
+              <label className="settings-modal__label" htmlFor="settings-theme">Syntax theme</label>
+              <select
+                id="settings-theme"
+                className="settings-modal__select"
+                value={diffTheme}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setDiffTheme(value);
+                  localStorage.setItem("piannotator-diff-theme", value);
+                }}
+              >
+                {THEME_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            {diffTheme === "custom" && (
+              <div className="settings-modal__field">
+                <label className="settings-modal__label" htmlFor="settings-custom-theme">Theme name</label>
+                <input
+                  id="settings-custom-theme"
+                  type="text"
+                  className="settings-modal__command"
+                  value={customThemeName}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setCustomThemeName(value);
+                    localStorage.setItem("piannotator-diff-theme-custom", value);
+                  }}
+                  placeholder="e.g. monokai, solarized-dark"
+                />
+              </div>
+            )}
+            <div className="settings-modal__field">
+              <label className="settings-modal__label" htmlFor="settings-custom-css">Custom CSS overrides</label>
+              <textarea
+                id="settings-custom-css"
+                className="settings-modal__command"
+                value={customCSS}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setCustomCSS(value);
+                  localStorage.setItem("piannotator-diff-custom-css", value);
+                }}
+                rows={4}
+                placeholder={"--diffs-added-dark: #3d8b4f;\n--diffs-deleted-dark: #b45858;"}
+              />
+            </div>
+            <div className="review-modal__actions">
+              <button type="button" onClick={() => setShowSettings(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showScopeSelector && onSendMessage && (
+        <div className="review-modal" role="presentation" onClick={() => setShowScopeSelector(false)}>
+          <div
+            className="review-modal__dialog review-modal__dialog--scope"
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <ScopeSelector
+              timeline={timeline}
+              loading={timelineLoading}
+              onRequestTimeline={() => {
+                setTimelineLoading(true);
+                onSendMessage({ type: "list-timeline" });
+              }}
+              onReviewScope={(command, fromIndex, toIndex) => {
+                handleScopedReview(command, fromIndex, toIndex);
+              }}
+              scopeLoading={scopeLoading}
+              vcsType={vcsType}
+              baselineRef={baselineRef}
+            />
+            <div className="review-modal__actions">
+              <button type="button" onClick={() => setShowScopeSelector(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showEditCommand && (
+        <div className="review-modal" role="presentation" onClick={() => { setShowEditCommand(false); setCommandError(null); }}>
+          <div
+            className="review-modal__dialog"
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="review-modal__title">Edit command</div>
+            <div className="settings-modal__field">
+              <textarea
+                className="settings-modal__command"
+                value={editingCommand}
+                onChange={(e) => setEditingCommand(e.target.value)}
+                rows={2}
+                disabled={commandRunning}
+              />
+            </div>
             {commandError && (
               <div className="settings-modal__error">{commandError}</div>
             )}
             <div className="review-modal__actions">
-              <button type="button" onClick={() => { setShowSettings(false); setCommandError(null); setPendingRerun(false); }}>
-                Close
+              <button type="button" onClick={() => { setShowEditCommand(false); setCommandError(null); }}>
+                Cancel
               </button>
-              {tabs.length > 1 && (
-                <button
-                  type="button"
-                  className="review-modal__confirm review-modal__confirm--danger"
-                  onClick={() => { deleteTab(activeTabIndex); setShowSettings(false); }}
-                >
-                  Delete version
-                </button>
-              )}
               <button
                 type="button"
                 className="review-modal__confirm"
@@ -412,12 +597,37 @@ export function App({ init, onSubmit, onCancel, onRerunCommand, onExtensionMessa
           </div>
         </div>
       )}
+      {pendingDelete && (
+        <div className="review-modal" role="presentation" onClick={() => setPendingDelete(false)}>
+          <div
+            className="review-modal__dialog"
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="review-modal__title">Delete version?</div>
+            <div className="review-modal__actions">
+              <button type="button" onClick={() => setPendingDelete(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="review-modal__confirm review-modal__confirm--danger"
+                onClick={() => { deleteTab(activeTabIndex); setPendingDelete(false); }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <main className="review-body">
         <ReviewView
           files={activeTab.files}
           annotations={activeTab.annotations}
           diffMode={diffMode}
           diffFont={diffFont}
+          diffTheme={diffTheme === "custom" ? customThemeName : diffTheme}
           collapsedFiles={activeTab.collapsedFiles}
           onToggleCollapsed={toggleCollapsed}
           viewedFiles={activeTab.viewedFiles}

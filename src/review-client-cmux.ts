@@ -137,38 +137,30 @@ export class CmuxReviewClient implements ReviewClient {
         continue;
       }
 
-      switch (message.type) {
-        case "submit":
-          return {
-            versions: message.versions,
-            overallComment: message.overallComment
-          };
-        case "cancel":
-          return null;
-        case "rerun": {
-          const callback = options?.onRerunCommand;
-          if (!callback) {
-            await this.deliverPayload(surfaceRef, tempDir, {
-              type: "rerun-error",
-              error: "Command rerun is unavailable for this review."
-            });
-            continue;
-          }
+      if (message.type === "submit") {
+        return {
+          versions: message.versions,
+          overallComment: message.overallComment
+        };
+      }
 
-          try {
-            const result = await callback(message.command);
-            await this.deliverPayload(surfaceRef, tempDir, {
-              type: "update",
-              content: result.content,
-              files: result.files
-            });
-          } catch (error) {
-            await this.deliverPayload(surfaceRef, tempDir, {
-              type: "rerun-error",
-              error: error instanceof Error ? error.message : String(error)
-            });
+      if (message.type === "cancel") {
+        return null;
+      }
+
+      // Forward all other messages to the general handler
+      const handler = options?.onMessage;
+      if (handler) {
+        try {
+          const response = await handler(message);
+          if (response) {
+            await this.deliverPayload(surfaceRef, tempDir, response);
           }
-          continue;
+        } catch (error) {
+          await this.deliverPayload(surfaceRef, tempDir, {
+            type: "rerun-error",
+            error: error instanceof Error ? error.message : String(error)
+          });
         }
       }
     }
@@ -190,6 +182,10 @@ export class CmuxReviewClient implements ReviewClient {
 
     if (result.code !== 0) {
       if (!(await this.isSurfaceAlive(surfaceRef))) {
+        return null;
+      }
+      // JS eval can time out when the browser is busy rendering. Treat as transient.
+      if (isTimeoutResult(result)) {
         return null;
       }
       throw new Error(`cmux browser eval failed while reading review state: ${formatExecOutput(result)}`);

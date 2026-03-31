@@ -172,7 +172,7 @@ const stderrRequest = await annotateTool.execute(
 );
 assert.match(stderrRequest.details.review.source.content, /^\[stderr\]\nonly stderr$/);
 
-// Missing command
+// No-command request uses default scope (code diff since baseline)
 const noCommandRequest = await annotateTool.execute(
   "tool-call-4",
   { action: "request" },
@@ -180,7 +180,8 @@ const noCommandRequest = await annotateTool.execute(
   undefined,
   emptyCtx
 );
-assert.equal(noCommandRequest.details.error, "annotate.request requires a command.");
+assert.ok(noCommandRequest.details.review, "no-command request should produce a review from code changes");
+assert.equal(noCommandRequest.details.review.title, "jj diff --from 'updated-ref' --git");
 
 // Bare /annotate uses code diff since baseline plus one stitched assistant message file
 const commandCtx = {
@@ -242,5 +243,55 @@ assert.match(assistantMessagesFile?.rawDiff ?? "", /## 2026-03-28T10:01:02.000Z/
 assert.match(assistantMessagesFile?.rawDiff ?? "", /First assistant message\./);
 assert.match(assistantMessagesFile?.rawDiff ?? "", /## 2026-03-28T10:02:03.000Z/);
 assert.match(assistantMessagesFile?.rawDiff ?? "", /Second assistant message\./);
+
+// Multi-turn: /annotate collects assistant messages across turns since last review
+sentMessages.length = 0;
+const multiTurnCtx = {
+  hasUI: false,
+  ui: { notify() {} },
+  sessionManager: {
+    getBranch() {
+      return [
+        {
+          type: "message",
+          timestamp: "2026-03-28T09:00:00.000Z",
+          message: { role: "user", content: [{ type: "text", text: "first turn" }] }
+        },
+        {
+          type: "message",
+          timestamp: "2026-03-28T09:01:00.000Z",
+          message: { role: "assistant", content: [{ type: "text", text: "Turn 1 response." }] }
+        },
+        {
+          type: "message",
+          timestamp: "2026-03-28T09:10:00.000Z",
+          message: { role: "user", content: [{ type: "text", text: "second turn" }] }
+        },
+        {
+          type: "message",
+          timestamp: "2026-03-28T09:11:00.000Z",
+          message: { role: "assistant", content: [{ type: "text", text: "Turn 2 response." }] }
+        }
+      ];
+    }
+  }
+};
+
+await annotateCommand.handler("", multiTurnCtx as any);
+assert.equal(sentMessages.length, 1);
+const multiTurnVersion = sentMessages[0].message.details.reviews.at(-1).versions[0];
+const multiTurnAssistant = multiTurnVersion.files.find((f: any) => f.displayPath === "assistant-messages.md");
+assert.ok(multiTurnAssistant, "multi-turn review should include assistant-messages.md");
+assert.match(multiTurnAssistant.rawDiff, /Turn 1 response\./);
+assert.match(multiTurnAssistant.rawDiff, /Turn 2 response\./);
+
+// turn_end handler captures VCS refs
+const turnEndHandlers = handlers.get("turn_end") ?? [];
+assert.equal(turnEndHandlers.length, 1);
+appendedEntries.length = 0;
+await turnEndHandlers[0]({}, emptyCtx as any);
+assert.equal(appendedEntries.length, 1);
+assert.equal(appendedEntries[0].customType, "annotate-turn-ref");
+assert.ok(appendedEntries[0].data.ref, "turn ref should have a VCS ref");
 
 console.log("Annotate stub smoke test passed.");

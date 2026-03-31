@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon, GearIcon } from "@primer/octicons-react";
 import { ProgressCircle } from "./ProgressCircle.js";
+import { TabPopover } from "./TabPopover.js";
 
 interface TabInfo {
   id: string;
@@ -24,6 +26,9 @@ interface ReviewBannerProps {
   tabs?: TabInfo[];
   activeTabIndex?: number;
   onTabChange?: (index: number) => void;
+  onNewVersion?: () => void;
+  onEditCommand?: () => void;
+  onDeleteTab?: () => void;
 }
 
 export function ReviewBanner({
@@ -40,8 +45,12 @@ export function ReviewBanner({
   onClear,
   tabs,
   activeTabIndex,
-  onTabChange
+  onTabChange,
+  onNewVersion,
+  onEditCommand,
+  onDeleteTab
 }: ReviewBannerProps) {
+  const [showPopover, setShowPopover] = useState(false);
   const hasTabs = tabs && onTabChange && activeTabIndex !== undefined;
   const displayTitle = hasTabs ? (tabs[activeTabIndex].command || `Tab ${activeTabIndex + 1}`) : title;
   const multiTab = hasTabs && tabs.length > 1;
@@ -61,11 +70,27 @@ export function ReviewBanner({
               <ChevronLeftIcon size={16} />
             </button>
           )}
-          <div className="review-banner__tab-label">
-            <div className="review-banner__title" title={displayTitle}>{displayTitle}</div>
-            <div className="review-banner__subtitle">
-              {multiTab ? `${activeTabIndex + 1}/${tabs.length} · ` : ""}{activeAnnotationCount} annotation{activeAnnotationCount === 1 ? "" : "s"}
+          <div className="review-banner__tab-label-wrapper">
+            <div
+              className="review-banner__tab-label"
+              onClick={() => setShowPopover(true)}
+              role="button"
+              tabIndex={0}
+            >
+              <div className="review-banner__title" title={displayTitle}>{displayTitle}</div>
+              <div className="review-banner__subtitle">
+                {multiTab ? `${activeTabIndex + 1}/${tabs.length} · ` : ""}{activeAnnotationCount} annotation{activeAnnotationCount === 1 ? "" : "s"}
+              </div>
             </div>
+            {showPopover && onNewVersion && onEditCommand && onDeleteTab && (
+              <TabPopover
+                onNewVersion={onNewVersion}
+                onEditCommand={onEditCommand}
+                onDeleteTab={onDeleteTab}
+                onClose={() => setShowPopover(false)}
+                canDelete={multiTab ?? false}
+              />
+            )}
           </div>
           {hasTabs && (
             <button

@@ -10,6 +10,7 @@ interface ReviewViewProps {
   annotations: Annotation[];
   diffMode: "unified" | "split";
   diffFont?: string;
+  diffTheme?: string;
   collapsedFiles: Set<string>;
   onToggleCollapsed: (filePath: string) => void;
   viewedFiles: Set<string>;
@@ -19,7 +20,7 @@ interface ReviewViewProps {
   deleteAnnotation: (annotationId: string) => void;
 }
 
-export function ReviewView({ files, annotations, diffMode, diffFont, collapsedFiles, onToggleCollapsed, viewedFiles, onToggleViewed, addAnnotation, updateComment, deleteAnnotation }: ReviewViewProps) {
+export function ReviewView({ files, annotations, diffMode, diffFont, diffTheme, collapsedFiles, onToggleCollapsed, viewedFiles, onToggleViewed, addAnnotation, updateComment, deleteAnnotation }: ReviewViewProps) {
   const orderedFiles = useMemo(() => sortFilesForTreeOrder(files), [files]);
   const [activeFilePath, setActiveFilePath] = useState(orderedFiles[0]?.displayPath ?? "");
   const panelRefs = useRef(new Map<string, HTMLDivElement>());
@@ -260,6 +261,7 @@ export function ReviewView({ files, annotations, diffMode, diffFont, collapsedFi
           annotationsByFile={annotationsByFile}
           diffMode={diffMode}
           diffFont={diffFont}
+          diffTheme={diffTheme}
           collapsedFiles={collapsedFiles}
           onToggleCollapsed={onToggleCollapsed}
           viewedFiles={viewedFiles}
@@ -333,6 +335,7 @@ interface VirtualizedFileListProps {
   annotationsByFile: Map<string, Annotation[]>;
   diffMode: "unified" | "split";
   diffFont?: string;
+  diffTheme?: string;
   collapsedFiles: Set<string>;
   onToggleCollapsed: (filePath: string) => void;
   viewedFiles: Set<string>;
@@ -350,6 +353,7 @@ function VirtualizedFileList({
   annotationsByFile,
   diffMode,
   diffFont,
+  diffTheme,
   collapsedFiles,
   onToggleCollapsed,
   viewedFiles,
@@ -413,6 +417,7 @@ function VirtualizedFileList({
               annotations={annotationsByFile.get(file.displayPath) ?? []}
               diffStyle={diffMode}
               diffFont={diffFont}
+              diffTheme={diffTheme}
               collapsed={collapsedFiles.has(file.displayPath)}
               onToggleCollapse={() => onToggleCollapsed(file.displayPath)}
               isViewed={viewedFiles.has(file.displayPath)}
