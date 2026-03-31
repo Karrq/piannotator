@@ -182,7 +182,7 @@ const noCommandRequest = await annotateTool.execute(
 );
 assert.equal(noCommandRequest.details.error, "annotate.request requires a command.");
 
-// Bare /annotate uses code diff since baseline plus per-message assistant files
+// Bare /annotate uses code diff since baseline plus one stitched assistant message file
 const commandCtx = {
   hasUI: false,
   ui: {
@@ -193,6 +193,7 @@ const commandCtx = {
       return [
         {
           type: "message",
+          timestamp: "2026-03-28T10:00:00.000Z",
           message: {
             role: "user",
             content: [{ type: "text", text: "please review this turn" }]
@@ -200,6 +201,7 @@ const commandCtx = {
         },
         {
           type: "message",
+          timestamp: "2026-03-28T10:01:02.000Z",
           message: {
             role: "assistant",
             content: [
@@ -210,6 +212,7 @@ const commandCtx = {
         },
         {
           type: "message",
+          timestamp: "2026-03-28T10:02:03.000Z",
           message: {
             role: "assistant",
             content: [
@@ -228,11 +231,16 @@ assert.equal(sentMessages[0].message.customType, "annotate");
 assert.equal(sentMessages[0].options.triggerTurn, true);
 assert.equal(sentMessages[0].message.details.lastReviewRef, "updated-ref");
 const commandReviews = sentMessages[0].message.details.reviews;
-const commandReviewFiles = commandReviews[commandReviews.length - 1].versions[0].files.map((file: any) => file.displayPath);
+const commandVersion = commandReviews[commandReviews.length - 1].versions[0];
+const commandReviewFiles = commandVersion.files.map((file: any) => file.displayPath);
 assert.deepEqual(commandReviewFiles, [
   "src/example.ts",
-  "assistant-message-1.md",
-  "assistant-message-2.md"
+  "assistant-messages.md"
 ]);
+const assistantMessagesFile = commandVersion.files.find((file: any) => file.displayPath === "assistant-messages.md");
+assert.match(assistantMessagesFile?.rawDiff ?? "", /## 2026-03-28T10:01:02.000Z/);
+assert.match(assistantMessagesFile?.rawDiff ?? "", /First assistant message\./);
+assert.match(assistantMessagesFile?.rawDiff ?? "", /## 2026-03-28T10:02:03.000Z/);
+assert.match(assistantMessagesFile?.rawDiff ?? "", /Second assistant message\./);
 
 console.log("Annotate stub smoke test passed.");

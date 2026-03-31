@@ -26,6 +26,7 @@ export function ReviewView({ files, annotations, diffMode, diffFont, collapsedFi
   const pendingScrollTargetRef = useRef<string | null>(null);
   const pendingScrollTimerRef = useRef<number | null>(null);
   const scrollAbortRef = useRef(0); // incremented to cancel stale tryScroll loops
+  const activeFilePathRef = useRef(activeFilePath);
 
   const finishPendingScroll = () => {
     const target = pendingScrollTargetRef.current;
@@ -52,6 +53,10 @@ export function ReviewView({ files, annotations, diffMode, diffFont, collapsedFi
 
     pendingScrollTimerRef.current = window.setTimeout(finishPendingScroll, 140);
   };
+
+  useEffect(() => {
+    activeFilePathRef.current = activeFilePath;
+  }, [activeFilePath]);
 
   useEffect(() => {
     if (!orderedFiles.some((file) => file.displayPath === activeFilePath)) {
@@ -116,31 +121,62 @@ export function ReviewView({ files, annotations, diffMode, diffFont, collapsedFi
   useEffect(() => {
     if (orderedFiles.length <= 1) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        // Suppress observer during programmatic scrolls to avoid
-        // shifting the render window mid-flight.
-        if (pendingScrollTargetRef.current !== null) return;
+    let frameId: number | null = null;
 
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
-        const filePath = visible?.target.getAttribute("data-file-path");
-        if (filePath && filePath !== activeFilePath) {
-          setActiveFilePath(filePath);
-        }
-      },
-      {
-        rootMargin: "-20% 0px -55% 0px",
-        threshold: [0.2, 0.45, 0.7]
+    const updateActiveFileFromScroll = () => {
+      frameId = null;
+
+      if (pendingScrollTargetRef.current !== null) {
+        return;
       }
-    );
 
-    for (const element of panelRefs.current.values()) {
-      observer.observe(element);
-    }
+      const anchorY = 96;
+      const panels = orderedFiles
+        .map((file) => {
+          const element = panelRefs.current.get(file.displayPath);
+          if (!element || element.childElementCount === 0) {
+            return null;
+          }
 
-    return () => observer.disconnect();
+          const rect = element.getBoundingClientRect();
+          return { filePath: file.displayPath, rect };
+        })
+        .filter((panel): panel is { filePath: string; rect: DOMRect } => panel !== null);
+
+      if (panels.length === 0) {
+        return;
+      }
+
+      const containingPanel = panels.find((panel) => panel.rect.top <= anchorY && panel.rect.bottom > anchorY);
+      const nextPanel = containingPanel
+        ?? panels.filter((panel) => panel.rect.bottom > anchorY).sort((left, right) => left.rect.top - right.rect.top)[0]
+        ?? panels[panels.length - 1];
+
+      if (nextPanel.filePath !== activeFilePathRef.current) {
+        setActiveFilePath(nextPanel.filePath);
+      }
+    };
+
+    const scheduleUpdate = () => {
+      if (frameId !== null) {
+        return;
+      }
+
+      frameId = window.requestAnimationFrame(updateActiveFileFromScroll);
+    };
+
+    scheduleUpdate();
+    window.addEventListener("scroll", scheduleUpdate, { passive: true });
+    window.addEventListener("resize", scheduleUpdate);
+
+    return () => {
+      window.removeEventListener("scroll", scheduleUpdate);
+      window.removeEventListener("resize", scheduleUpdate);
+
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
   }, [orderedFiles]);
 
   const annotationsByFile = useMemo(() => {

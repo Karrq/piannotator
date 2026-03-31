@@ -694,6 +694,7 @@ button:disabled {
   padding: 0.85rem;
   background: #0d1117;
   color: #e6edf3;
+  overflow-anchor: none;
 }
 
 .comment-form__label {

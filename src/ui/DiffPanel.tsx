@@ -129,13 +129,19 @@ export function DiffPanel({
   }, []);
 
   const closeWidget = useCallback(() => {
-    // Save scroll position before removing the CommentForm.
-    // Removing a focused textarea causes the browser to scroll (especially in WKWebView).
     const scrollY = window.scrollY;
+
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+
     setWidgetOpen(false);
     setWidgetSelection(null);
+
     requestAnimationFrame(() => {
-      window.scrollTo(0, scrollY);
+      requestAnimationFrame(() => {
+        window.scrollTo(0, scrollY);
+      });
     });
   }, []);
 

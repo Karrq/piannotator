@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 
 interface CommentFormProps {
   label: string;
@@ -12,29 +12,20 @@ interface CommentFormProps {
 export function CommentForm({ label, initialComment = "", submitLabel = "Add comment", selectedLinesText, onSubmit, onCancel }: CommentFormProps) {
   const [comment, setComment] = useState(initialComment);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const formRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     textareaRef.current?.focus({ preventScroll: true });
     const length = textareaRef.current?.value.length ?? 0;
     textareaRef.current?.setSelectionRange(length, length);
-
-    // Only scroll if the bottom of the form is below the viewport.
-    // Scroll just enough to reveal it with some breathing room.
-    const el = formRef.current;
-    if (el) {
-      const rect = el.getBoundingClientRect();
-      const overflow = rect.bottom - window.innerHeight + 24;
-      if (overflow > 0) {
-        window.scrollBy({ top: overflow, behavior: "smooth" });
-      }
-    }
   }, [initialComment]);
 
   const trimmedComment = comment.trim();
+  const preventButtonFocus = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+  };
 
   return (
-    <div className="comment-form" ref={formRef}>
+    <div className="comment-form">
       <div className="comment-form__label">{label}</div>
       <textarea
         ref={textareaRef}
@@ -59,13 +50,14 @@ export function CommentForm({ label, initialComment = "", submitLabel = "Add com
         placeholder="Add a review note"
       />
       <div className="comment-form__actions">
-        <button type="button" onClick={onCancel}>
+        <button type="button" onMouseDown={preventButtonFocus} onClick={onCancel}>
           Cancel
         </button>
         {selectedLinesText && (
           <button
             type="button"
             className="comment-form__suggest"
+            onMouseDown={preventButtonFocus}
             onClick={() => {
               const template = "```suggestion\n" + selectedLinesText + "\n```";
               setComment((prev) => prev ? prev + "\n" + template : template);
@@ -77,6 +69,7 @@ export function CommentForm({ label, initialComment = "", submitLabel = "Add com
         <button
           type="button"
           className="comment-form__submit"
+          onMouseDown={preventButtonFocus}
           onClick={() => onSubmit(trimmedComment)}
           disabled={trimmedComment.length === 0}
         >

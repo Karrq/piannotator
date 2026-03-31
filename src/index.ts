@@ -195,15 +195,15 @@ export default function (pi: ExtensionAPI) {
           exitCode: execResult.code
         };
       } else {
-        const assistantDiffs = getLastTurnAssistantDiffs(ctx);
+        const assistantDiff = getLastTurnAssistantDiff(ctx);
         const codeDiff = await getChangesSinceLastReview();
 
-        if (assistantDiffs.length === 0 && !codeDiff) {
+        if (!assistantDiff && !codeDiff) {
           ctx.ui.notify("No assistant message or code changes found to annotate", "warning");
           return;
         }
 
-        const contentParts = [codeDiff, ...assistantDiffs].filter((part): part is string => Boolean(part));
+        const contentParts = [codeDiff, assistantDiff].filter((part): part is string => Boolean(part));
         source = {
           kind: "command",
           title: "turn review",
@@ -722,18 +722,18 @@ function previewText(value: string, maxLength: number): string {
   return `${normalized.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
 }
 
-function getLastTurnAssistantDiffs(ctx: ExtensionContext): string[] {
+function getLastTurnAssistantDiff(ctx: ExtensionContext): string | null {
   const entries = ctx.sessionManager.getBranch() as SessionEntry[];
   if (entries.length === 0) {
-    return [];
+    return null;
   }
 
   const turnStart = findTurnStartIndex(entries, entries.length - 1, 0);
   if (turnStart === -1) {
-    return [];
+    return null;
   }
 
-  const diffs: string[] = [];
+  const sections: string[] = [];
   let assistantIndex = 1;
 
   for (let i = turnStart + 1; i < entries.length; i++) {
@@ -752,11 +752,26 @@ function getLastTurnAssistantDiffs(ctx: ExtensionContext): string[] {
       continue;
     }
 
-    diffs.push(textToDiff(text, `assistant-message-${assistantIndex}.md`));
+    sections.push(`## ${formatAssistantMessageHeading(entry.timestamp, assistantIndex)}\n\n${text}`);
     assistantIndex += 1;
   }
 
-  return diffs;
+  if (sections.length === 0) {
+    return null;
+  }
+
+  return textToDiff(sections.join("\n\n"), "assistant-messages.md");
+}
+
+function formatAssistantMessageHeading(timestamp: unknown, assistantIndex: number): string {
+  if (typeof timestamp === "string") {
+    const date = new Date(timestamp);
+    if (!Number.isNaN(date.getTime())) {
+      return date.toISOString();
+    }
+  }
+
+  return `Assistant message ${assistantIndex}`;
 }
 
 function detectVcs(cwd: string): "jj" | "git" | null {
