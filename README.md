@@ -12,10 +12,13 @@ Piannotator replaces text-based code review with a GitHub-style diff interface. 
 - **Line-level annotations** - click any line to leave a comment
 - **Multiline selection** - click-and-drag to annotate ranges
 - **Code suggestions** - insert suggestion blocks that the agent can apply directly
-- **File tree navigation** - browse changed files in a sidebar
+- **File tree navigation** - browse changed files in a collapsible, resizable sidebar
 - **Collapsible unchanged regions** - focus on what matters
 - **Multi-version tabs** - re-run commands and compare across versions
 - **Progress tracking** - mark files as viewed
+- **Turn-scoped review** - review code changes and assistant messages from specific turns via a timeline/scope selector
+- **Syntax highlighting themes** - choose from GitHub Dark, Dracula, Nord, Tokyo Night, and other shiki-based themes
+- **Composable API** - other extensions can consume Piannotator's review capabilities via the event bus
 
 The agent receives your annotations as structured data with file paths, line numbers, and comments - giving it precise context to act on your feedback.
 
@@ -62,13 +65,31 @@ The agent can then call `annotate.detail` to retrieve full context for any annot
 /annotate git diff HEAD~1
 ```
 
-Opens the review UI for the given command's output. Without arguments, it opens the last assistant message for review.
+Opens the review UI for the given command's output.
+
+Without arguments, `/annotate` opens a turn-scoped review combining code changes (VCS diff since the last review) and assistant messages. A timeline/scope selector lets you pick which turns to review, and you can switch to reviewing arbitrary diff commands from the same window.
 
 ### Tips
 
 - **Cmd+Enter** submits a comment
 - **Escape** cancels the current comment form
 - Re-run the command from within the review to see updated diffs, or run a different command to view other parts of the codebase
+- Use the scope selector to narrow a review to specific agent turns
+
+### Extension API
+
+Other pi extensions can consume Piannotator's review flow via the event bus:
+
+```ts
+// Request the API
+pi.events.on("piannotator", (api) => {
+  // api.requestReview({ title, content, client, onMessage })
+  // api.utils.parseDiff(text), api.utils.isUnifiedDiff(text), api.utils.textToDiff(text, filename)
+});
+pi.events.emit("piannotator:get_api");
+```
+
+See `test-extensions/api-consumer.ts` for a full example.
 
 ## Development
 
@@ -77,7 +98,7 @@ npm install
 npm run build    # TypeScript compile + validations + UI bundle
 ```
 
-The build runs several validation scripts as part of the pipeline: diff parser, diff panel, range selection, file tree, Glimpse client, smoke test, and UI bundle validation.
+The build runs several validation scripts as part of the pipeline: diff parser, diff panel, range selection, file tree, Glimpse client, cmux client, smoke test, and UI bundle validation.
 
 For Glimpse smoke testing:
 
@@ -86,6 +107,8 @@ node build/scripts/test-glimpse.js
 ```
 
 Set `PIANNOTATOR_REVIEW_CLIENT=stub` to use a deterministic stub client for development without opening Glimpse windows.
+
+When running inside [cmux](https://github.com/nichochar/cmux), Piannotator detects the environment and uses the cmux surface for rendering the review UI instead of Glimpse.
 
 ## Similar tools
 
