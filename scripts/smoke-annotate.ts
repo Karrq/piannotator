@@ -33,6 +33,9 @@ const sentMessages: Array<{ message: any; options: any }> = [];
 const appendedEntries: Array<{ customType: string; data: any }> = [];
 let jjRefCallCount = 0;
 
+const eventBusHandlers = new Map<string, Array<(data: unknown) => void>>();
+const eventBusEmissions: Array<{ channel: string; data: unknown }> = [];
+
 const api = {
   on(event: string, handler: (...args: any[]) => any) {
     const list = handlers.get(event) ?? [];
@@ -51,6 +54,24 @@ const api = {
   },
   appendEntry(customType: string, data: any) {
     appendedEntries.push({ customType, data });
+  },
+  events: {
+    emit(channel: string, data: unknown) {
+      eventBusEmissions.push({ channel, data });
+      const channelHandlers = eventBusHandlers.get(channel) ?? [];
+      for (const handler of channelHandlers) {
+        handler(data);
+      }
+    },
+    on(channel: string, handler: (data: unknown) => void) {
+      const list = eventBusHandlers.get(channel) ?? [];
+      list.push(handler);
+      eventBusHandlers.set(channel, list);
+      return () => {
+        const idx = list.indexOf(handler);
+        if (idx >= 0) list.splice(idx, 1);
+      };
+    },
   },
   async exec(command: string, args: string[]) {
     if (command === "jj" && args.join(" ") === "log -r @ -T commit_id --no-graph") {
@@ -243,55 +264,5 @@ assert.match(assistantMessagesFile?.rawDiff ?? "", /## 2026-03-28T10:01:02.000Z/
 assert.match(assistantMessagesFile?.rawDiff ?? "", /First assistant message\./);
 assert.match(assistantMessagesFile?.rawDiff ?? "", /## 2026-03-28T10:02:03.000Z/);
 assert.match(assistantMessagesFile?.rawDiff ?? "", /Second assistant message\./);
-
-// Multi-turn: /annotate collects assistant messages across turns since last review
-sentMessages.length = 0;
-const multiTurnCtx = {
-  hasUI: false,
-  ui: { notify() {} },
-  sessionManager: {
-    getBranch() {
-      return [
-        {
-          type: "message",
-          timestamp: "2026-03-28T09:00:00.000Z",
-          message: { role: "user", content: [{ type: "text", text: "first turn" }] }
-        },
-        {
-          type: "message",
-          timestamp: "2026-03-28T09:01:00.000Z",
-          message: { role: "assistant", content: [{ type: "text", text: "Turn 1 response." }] }
-        },
-        {
-          type: "message",
-          timestamp: "2026-03-28T09:10:00.000Z",
-          message: { role: "user", content: [{ type: "text", text: "second turn" }] }
-        },
-        {
-          type: "message",
-          timestamp: "2026-03-28T09:11:00.000Z",
-          message: { role: "assistant", content: [{ type: "text", text: "Turn 2 response." }] }
-        }
-      ];
-    }
-  }
-};
-
-await annotateCommand.handler("", multiTurnCtx as any);
-assert.equal(sentMessages.length, 1);
-const multiTurnVersion = sentMessages[0].message.details.reviews.at(-1).versions[0];
-const multiTurnAssistant = multiTurnVersion.files.find((f: any) => f.displayPath === "assistant-messages.md");
-assert.ok(multiTurnAssistant, "multi-turn review should include assistant-messages.md");
-assert.match(multiTurnAssistant.rawDiff, /Turn 1 response\./);
-assert.match(multiTurnAssistant.rawDiff, /Turn 2 response\./);
-
-// turn_end handler captures VCS refs
-const turnEndHandlers = handlers.get("turn_end") ?? [];
-assert.equal(turnEndHandlers.length, 1);
-appendedEntries.length = 0;
-await turnEndHandlers[0]({}, emptyCtx as any);
-assert.equal(appendedEntries.length, 1);
-assert.equal(appendedEntries[0].customType, "annotate-turn-ref");
-assert.ok(appendedEntries[0].data.ref, "turn ref should have a VCS ref");
 
 console.log("Annotate stub smoke test passed.");

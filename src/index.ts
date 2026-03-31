@@ -5,6 +5,7 @@ import { BorderedLoader, type ExtensionAPI, type ExtensionContext, type Extensio
 import { Text } from "@mariozechner/pi-tui";
 import type { Static } from "@sinclair/typebox";
 import { Type } from "@sinclair/typebox";
+import { createPiannotatorAPI } from "./api.js";
 import { extractDiffContext, isUnifiedDiff, parseDiff, textToDiff } from "./diff-parser.js";
 import type { ReviewClient } from "./review-client.js";
 import { CmuxReviewClient } from "./review-client-cmux.js";
@@ -73,6 +74,11 @@ export default function (pi: ExtensionAPI) {
   /** VCS refs captured at the end of each turn, ordered chronologically. */
   let turnRefs: string[] = [];
   const reviewClient: ReviewClient = createReviewClient(pi);
+  const api = createPiannotatorAPI();
+
+  pi.events.on("piannotator:get_api", () => {
+    pi.events.emit("piannotator", api);
+  });
 
   const reconstructState = (ctx: ExtensionContext) => {
     reviews = [];
@@ -135,6 +141,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     reconstructState(ctx);
     await ensureBaselineRef();
+    pi.events.emit("piannotator", api);
   });
   pi.on("session_switch", async (_event, ctx) => {
     reconstructState(ctx);
@@ -319,19 +326,22 @@ export default function (pi: ExtensionAPI) {
     signal?: AbortSignal,
     ctx?: ExtensionContext
   ): Promise<{ review: Review; cancelled: false } | { cancelled: true }> {
-    const files = isUnifiedDiff(source.content) ? parseDiff(source.content) : [];
-    const clientRequest: ReviewClientRequest = {
+    const onMessage = ctx
+      ? (msg: ReviewBridgeMessage) => handleBridgeMessage(msg, ctx, signal)
+      : (_msg: ReviewBridgeMessage) => Promise.resolve(null);
+
+    const clientResult = await api.requestReview({
       title: source.title,
       content: source.content,
-      files,
-      command: source.command
-    };
-
-    const clientResult = await reviewClient.requestReview(clientRequest, {
+      client: reviewClient,
+      onMessage,
       signal,
-      onMessage: ctx
-        ? (msg) => handleBridgeMessage(msg, ctx, signal)
-        : undefined
+      onRerunCommand: async (command: string) => {
+        const rerunResult = await pi.exec("sh", ["-lc", wrapWithFullContext(command)], { signal });
+        const content = combineCommandOutput(rerunResult.stdout, rerunResult.stderr, rerunResult.code);
+        const newFiles = isUnifiedDiff(content) ? parseDiff(content) : [];
+        return { content, files: newFiles };
+      }
     });
 
     if (clientResult === null) {
