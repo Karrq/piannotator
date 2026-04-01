@@ -143,14 +143,6 @@ export default function (pi: ExtensionAPI) {
     await ensureBaselineRef();
     pi.events.emit("piannotator", api);
   });
-  pi.on("session_switch", async (_event, ctx) => {
-    reconstructState(ctx);
-    await ensureBaselineRef();
-  });
-  pi.on("session_fork", async (_event, ctx) => {
-    reconstructState(ctx);
-    await ensureBaselineRef();
-  });
   pi.on("session_tree", async (_event, ctx) => reconstructState(ctx));
 
   pi.on("turn_end", async () => {
@@ -906,6 +898,8 @@ function renderCall(args: AnnotateParams, theme: Theme) {
         0
       );
     }
+    default:
+      return new Text(theme.fg("toolTitle", theme.bold("annotate")), 0, 0);
   }
 }
 
@@ -952,6 +946,8 @@ function renderResult(details: AnnotateToolDetails | undefined, content: Array<{
         0
       );
     }
+    default:
+      return new Text(theme.fg("dim", "annotate"), 0, 0);
   }
 }
 
