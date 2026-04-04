@@ -1,6 +1,7 @@
 ---
 name: piannotator
-description: Open a visual code review UI in the browser for annotating diffs. Use when the user wants to review code changes, annotate a diff, or do a visual code review. The user annotates in the browser and structured annotations are returned as text.
+description: Open a visual code review UI in the browser for annotating diffs. Use when the user wants to review code changes, annotate a diff, or do a visual code review. Use this skill whenever the user mentions reviewing code, checking changes, looking at a diff, doing a code review, or wants to annotate or comment on code changes. Also use when the user wants visual review of modifications before committing or merging.
+compatibility: Requires Node.js 18+ and npm. Works on any OS - opens review UI in your default browser.
 ---
 
 # Piannotator - Visual Code Review
@@ -10,40 +11,36 @@ Opens a browser-based diff review UI where the user can annotate code changes. A
 ## Requirements
 
 - Node.js 18+
+- npm or compatible package manager
 
-## Setup
+## Install
 
-Run once before first use:
+Via [skills.sh](https://skills.sh):
 
 ```bash
-cd <skill-dir> && npm install && npm run build
+npx skills add Karrq/piannotator
+```
+
+After install, build the artifacts:
+
+```bash
+npm install && npm run build
 ```
 
 ## Usage
 
 ```bash
-node <skill-dir>/dist/review.mjs -- <diff-command>
+node dist/review.mjs -- <diff-command>
 ```
 
-The command after `--` is executed by the script. It should produce a unified diff (e.g. `git diff`, `jj diff --git`). The script automatically wraps git/jj commands to produce full-context diffs for better review.
+The command after `--` should produce a unified diff (e.g. `git diff`, `jj diff --git`). The script automatically wraps git/jj commands for full-context diffs.
 
 ### Examples
 
 ```bash
-# Review all uncommitted changes (staged + unstaged)
-node <skill-dir>/dist/review.mjs -- git diff HEAD
-
-# Review staged changes only
-node <skill-dir>/dist/review.mjs -- git diff --cached
-
-# Review unstaged changes only
-node <skill-dir>/dist/review.mjs -- git diff
-
-# Review changes since a commit
-node <skill-dir>/dist/review.mjs -- git diff HEAD~3
-
-# Review jj changes
-node <skill-dir>/dist/review.mjs -- jj diff --git
+node dist/review.mjs -- git diff HEAD      # Review uncommitted changes
+node dist/review.mjs -- git diff --cached  # Review staged changes only
+node dist/review.mjs -- jj diff --git      # Review jj changes
 ```
 
 Prefer `git diff HEAD` over `git diff` to capture both staged and unstaged changes.
